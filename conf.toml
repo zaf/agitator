@@ -1,0 +1,13 @@
+#
+# AGItator sample config file
+#
+
+[host]
+
+	[host.127.0.0.1]
+	server = "192.168.1.1"
+	port = 4545
+
+	[host.192.168.10.2]
+	server = "192.168.1.1"
+	port = 4545
