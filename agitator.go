@@ -22,38 +22,56 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/BurntSushi/toml"
 )
 
-// Session struct
+const (
+	server = iota
+	client = iota
+)
+
+// AgiSession struct
 type AgiSession struct {
-	clientCon net.Conn
-	serverCon net.Conn
-	request   *url.URL
+	ClientCon net.Conn
+	ServerCon net.Conn
+	Request   *url.URL
 }
 
-var (
-	conf   = flag.String("conf", "/etc/agitator.conf", "Configuration file")
-	debug  = flag.Bool("debug", false, "Print debug information on stderr")
-	listen = flag.String("listen", "0.0.0.0", "Listening address")
-	port   = flag.String("port", "4573", "Listening server port")
-)
+// conf file structs
+type Config struct {
+	Listen string
+	Port   int
+	Debug  bool
+	App   map[string]Server
+}
+
+//
+type Server struct {
+	Host string
+	Port int
+}
+
+var config Config
 
 func main() {
+	var conf = flag.String("conf", "/etc/agitator.conf", "Configuration file")
 	flag.Parse()
-	if *conf == "" {
-		log.Fatal("No configuration file specified.")
+	_, err := toml.DecodeFile(*conf, &config)
+	if err != nil {
+		log.Fatal(err)
 	}
-	// Do config stuff...
-
+	//log.Println(config)
 	// Handle interrupts
 	var shutdown int32
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt)
 
 	// Create a listener and start a new goroutine for each connection.
-	addr := net.JoinHostPort(*listen, *port)
+	addr := net.JoinHostPort(config.Listen, strconv.Itoa(config.Port))
 	log.Printf("Starting AGItator proxy on %v\n", addr)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -68,7 +86,7 @@ func main() {
 				log.Println(err)
 				continue
 			}
-			if *debug {
+			if config.Debug {
 				log.Printf("Connected: %v <-> %v\n", conn.LocalAddr(), conn.RemoteAddr())
 			}
 			wg.Add(1)
@@ -82,12 +100,12 @@ func main() {
 	return
 }
 
-func connHandle(client net.Conn, wg *sync.WaitGroup) {
+func connHandle(conn net.Conn, wg *sync.WaitGroup) {
 	sess := new(AgiSession)
-	sess.clientCon = client
+	sess.ClientCon = conn
 	var err error
 	defer func() {
-		sess.clientCon.Close()
+		sess.ClientCon.Close()
 		wg.Done()
 	}()
 
@@ -105,36 +123,32 @@ func connHandle(client net.Conn, wg *sync.WaitGroup) {
 	}
 
 	// Dial remote server and send the AGI Env data
-	sess.serverCon, err = net.Dial("tcp", sess.request.Host)
+	sess.ServerCon, err = net.Dial("tcp", sess.Request.Host)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	defer sess.serverCon.Close()
-	env = append(env, []byte("agi_request: "+sess.request.String()+"\n\r\n")...)
-	sess.serverCon.Write(env)
+	defer sess.ServerCon.Close()
+	env = append(env, []byte("agi_request: "+sess.Request.String()+"\n\r\n")...)
+	sess.ServerCon.Write(env)
 	// Relay data between the 2 connections.
-	serverDone := make(chan int)
-	clientDone := make(chan int)
+	done := make(chan int)
 	go func() {
-		io.Copy(sess.serverCon, sess.clientCon)
-		clientDone <- 1
+		io.Copy(sess.ServerCon, sess.ClientCon)
+		done <- client
 	}()
 	go func() {
-		io.Copy(sess.clientCon, sess.serverCon)
-		serverDone <- 1
+		io.Copy(sess.ClientCon, sess.ServerCon)
+		done <- server
 	}()
-
-	select {
-	case <-serverDone:
-		sess.clientCon.Close()
-		<-clientDone
-	case <-clientDone:
-		sess.serverCon.Close()
-		<-serverDone
+	fin := <-done
+	if fin == client {
+		sess.ServerCon.Close()
+	} else {
+		sess.ClientCon.Close()
 	}
-	close(serverDone)
-	close(clientDone)
+	<-done
+	close(done)
 	return
 }
 
@@ -143,7 +157,7 @@ func (s *AgiSession) parseEnv() ([]byte, error) {
 	agiEnv := make([]byte, 0, 512)
 	var req string
 	var err error
-	buf := bufio.NewReader(s.clientCon)
+	buf := bufio.NewReader(s.ClientCon)
 	for i := 0; i <= 150; i++ {
 		line, err := buf.ReadBytes(10)
 		if err != nil || len(line) <= len("\r\n") {
@@ -160,18 +174,19 @@ func (s *AgiSession) parseEnv() ([]byte, error) {
 	if req == "" {
 		err = fmt.Errorf("Non valid AGI request")
 	} else {
-		s.request, err = url.Parse(req)
+		s.Request, err = url.Parse(req)
 	}
 	return agiEnv, err
 }
 
-// Shim
+// Route based on reguest path
 func (s *AgiSession) route() error {
-	srvHost := "127.0.0.1"
-	srvPort := 4545
 	var err error
-	if s.request.Path == "/myagi" {
-		s.request.Host = srvHost + ":" + strconv.Itoa(srvPort)
+	path := strings.TrimPrefix(s.Request.Path, "/")
+	if server, ok := config.App[path]; ok {
+		s.Request.Host = server.Host + ":" + strconv.Itoa(server.Port)
+	} else if server, ok := config.App["*"]; ok {
+		s.Request.Host = server.Host + ":" + strconv.Itoa(server.Port)
 	} else {
 		err = fmt.Errorf("No route found")
 	}
