@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/syslog"
 	"net"
 	"net/url"
 	"os"
@@ -41,6 +42,7 @@ const (
 
 var (
 	rtable RouteTable
+	climit int
 	debug  bool
 )
 
@@ -55,6 +57,8 @@ type AgiSession struct {
 type Config struct {
 	Listen string
 	Port   int
+	Conlim int
+	Log    string
 	Debug  bool
 	Route  map[string]struct {
 		Hosts []string
@@ -123,6 +127,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if config.Log == "syslog" {
+		logwriter, err := syslog.New(syslog.LOG_NOTICE, "agitator")
+		if err == nil {
+			log.SetOutput(logwriter)
+		}
+	}
+	climit = config.Conlim
 	debug = config.Debug
 
 	// Generate Routing table
@@ -305,8 +316,18 @@ func (s *AgiSession) route() error {
 	hosts := make([]Server, 0, len(dest.Hosts))
 	for srv, pref := range dest.Hosts {
 		pref.RLock()
+		if climit > 0 && pref.Count >= climit {
+			if debug {
+				log.Println("Reached the connections limit in", srv)
+			}
+			pref.RUnlock()
+			continue
+		}
 		hosts = append(hosts, Server{srv, pref.Priority, pref.Count})
 		pref.RUnlock()
+	}
+	if len(hosts) == 0 {
+		return fmt.Errorf("No routes available")
 	}
 	if dest.Mode == "balance" {
 		// Load Balance mode: Sort server by number of active sessions
