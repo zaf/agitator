@@ -21,6 +21,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -38,6 +39,11 @@ const (
 	confPath   = "/etc/agitator.conf"
 )
 
+var (
+	rtable RouteTable
+	debug  bool
+)
+
 // AgiSession struct
 type AgiSession struct {
 	ClientCon *net.TCPConn
@@ -45,39 +51,69 @@ type AgiSession struct {
 	Request   *url.URL
 }
 
-// RouteTable holds the routing table
-type RouteTable map[string]Path
-
 // Config file struct
 type Config struct {
 	Listen string
 	Port   int
 	Debug  bool
-	Route  map[string]App
+	Route  map[string]struct {
+		Hosts []string
+		Mode  string
+	}
 }
 
-// App struct
-type App struct {
-	Hosts []string
-	Mode  string
-}
+// RouteTable holds the routing table
+type RouteTable map[string]*Path
 
-// Path struct
+// Path struct holds a list of hosts and the routing mode
 type Path struct {
-	Hosts []Server
+	Hosts map[string]*SrvPref
 	Mode  string
 }
 
-// Server struct
-type Server struct {
-	Host  string
-	Count int
+// SrvPref holds the priority and the number of active sessions
+type SrvPref struct {
+	sync.RWMutex
+	Priority int
+	Count    int
 }
 
-var (
-	rtable RouteTable
-	debug  bool
-)
+// Server struct holds the server address, priority and the number of active sessions
+type Server struct {
+	Host     string
+	Priority int
+	Count    int
+}
+
+// PerActive implements sort.Interface for []Server based on the Count field
+type PerActive []Server
+
+func (s PerActive) Len() int {
+	return len(s)
+}
+
+func (s PerActive) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s PerActive) Less(i, j int) bool {
+	return s[i].Count < s[j].Count
+}
+
+// PerPriority implements sort.Interface for []Server based on the Priority field
+type PerPriority []Server
+
+func (s PerPriority) Len() int {
+	return len(s)
+}
+
+func (s PerPriority) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s PerPriority) Less(i, j int) bool {
+	return s[i].Priority < s[j].Priority
+}
 
 func main() {
 	var config Config
@@ -136,22 +172,34 @@ func main() {
 
 // Generate Routing table from config data
 func genRtable(conf Config) RouteTable {
-	table := make(RouteTable)
+	table := make(RouteTable, len(conf.Route))
 	for path, app := range conf.Route {
 		if len(app.Hosts) == 0 {
 			log.Println("No routes for", path)
 			continue
 		}
 		p := Path{}
-		p.Mode = app.Mode
-		for _, host := range app.Hosts {
-			if strings.Index(host, ":") == -1 {
+		switch app.Mode {
+		case "", "failover":
+			p.Mode = "failover"
+		case "balance":
+			p.Mode = "balance"
+		default:
+			log.Println("Invalid mode for", path)
+			continue
+		}
+		p.Hosts = make(map[string]*SrvPref, len(app.Hosts))
+		for i, host := range app.Hosts {
+			if strings.Index(host, ":") == -1 || strings.Index(host, "]") == len(host)-1 {
+				// Add default port to host string if not present
 				host += agiPort
 			}
-			s := Server{host, 0}
-			p.Hosts = append(p.Hosts, s)
+			s := SrvPref{}
+			s.Priority = i
+			s.Count = 0
+			p.Hosts[host] = &s
 		}
-		table[path] = p
+		table[path] = &p
 	}
 	return table
 }
@@ -199,6 +247,7 @@ func connHandle(conn *net.TCPConn, wg *sync.WaitGroup) {
 	}
 	<-done
 	close(done)
+	updateCount(strings.TrimPrefix(sess.Request.Path, "/"), sess.Request.Host, -1)
 	return
 }
 
@@ -253,8 +302,20 @@ func (s *AgiSession) route() error {
 			log.Println("Using wildcard route for", path)
 		}
 	}
-	//if dest.Mode == "failover" || dest.Mode == "" {
-	for _, server := range dest.Hosts {
+	hosts := make([]Server, 0, len(dest.Hosts))
+	for srv, pref := range dest.Hosts {
+		pref.RLock()
+		hosts = append(hosts, Server{srv, pref.Priority, pref.Count})
+		pref.RUnlock()
+	}
+	if dest.Mode == "balance" {
+		// Load Balance mode: Sort server by number of active sessions
+		sort.Sort(PerActive(hosts))
+	} else {
+		// Failover mode: Sort server list by priority
+		sort.Sort(PerPriority(hosts))
+	}
+	for _, server := range hosts {
 		tcpaddr, err = net.ResolveTCPAddr("tcp", server.Host)
 		if err != nil {
 			continue
@@ -262,10 +323,27 @@ func (s *AgiSession) route() error {
 		s.ServerCon, err = net.DialTCP("tcp", nil, tcpaddr)
 		if err == nil {
 			s.Request.Host = server.Host
+			updateCount(path, server.Host, 1)
 			break
 		} else if debug {
 			log.Println("Failed to connect to", tcpaddr, err)
 		}
 	}
 	return err
+}
+
+// Update active session counter
+func updateCount(path, host string, i int) {
+	dest, ok := rtable[path]
+	if !ok {
+		dest, ok = rtable["*"]
+		if !ok {
+			return
+		}
+	}
+	if _, ok = dest.Hosts[host]; ok {
+		dest.Hosts[host].Lock()
+		dest.Hosts[host].Count += i
+		dest.Hosts[host].Unlock()
+	}
 }

@@ -4,6 +4,12 @@ A reverse proxy for the FastAGI protocol
 
 !!Work in progress!!
 
+Suppots:
+
+* Request based routing
+* Load balancing
+* HA - Failover
+
 Copyright (C) 2014 - 2015, Lefteris Zafiris <zaf.000@gmail.com>
 
 This program is free software, distributed under the terms of
