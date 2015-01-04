@@ -93,33 +93,33 @@ type Server struct {
 	Count    int
 }
 
-// PerActive implements sort.Interface for []Server based on the Count field
-type PerActive []Server
+// ByActive implements sort.Interface for []Server based on the Count field
+type ByActive []Server
 
-func (s PerActive) Len() int {
+func (s ByActive) Len() int {
 	return len(s)
 }
 
-func (s PerActive) Swap(i, j int) {
+func (s ByActive) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
 }
 
-func (s PerActive) Less(i, j int) bool {
+func (s ByActive) Less(i, j int) bool {
 	return s[i].Count < s[j].Count
 }
 
-// PerPriority implements sort.Interface for []Server based on the Priority field
-type PerPriority []Server
+// ByPriority implements sort.Interface for []Server based on the Priority field
+type ByPriority []Server
 
-func (s PerPriority) Len() int {
+func (s ByPriority) Len() int {
 	return len(s)
 }
 
-func (s PerPriority) Swap(i, j int) {
+func (s ByPriority) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
 }
 
-func (s PerPriority) Less(i, j int) bool {
+func (s ByPriority) Less(i, j int) bool {
 	return s[i].Priority < s[j].Priority
 }
 
@@ -132,6 +132,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// Setup logging
 	if config.Log == "syslog" {
 		logwriter, err := syslog.New(syslog.LOG_NOTICE, "agitator")
 		if err == nil {
@@ -139,12 +141,12 @@ func main() {
 		}
 	}
 
-	// Store Global values
+	// Set some settings as global vars
 	dialTimeout = time.Duration(float64(config.Timeout)) * time.Second
 	climit = config.Conlim
 	debug = config.Debug
 
-	// Generate Routing table
+	// Generate routing table from config file data
 	rtable = genRtable(config)
 	if len(rtable) == 0 {
 		log.Fatal("No routes specified")
@@ -221,6 +223,7 @@ func genRtable(conf Config) RouteTable {
 	return table
 }
 
+// Connection handler. Find route, connect to remote server and relay data.
 func connHandle(conn net.Conn, wg *sync.WaitGroup) {
 	sess := new(AgiSession)
 	sess.ClientCon = conn
@@ -243,9 +246,11 @@ func connHandle(conn net.Conn, wg *sync.WaitGroup) {
 		return
 	}
 	defer sess.ServerCon.Close()
+
 	// Send the AGI env to the server.
 	env = append(env, []byte("agi_request: "+sess.Request.String()+"\n\r\n")...)
 	sess.ServerCon.Write(env)
+
 	// Relay data between the 2 connections.
 	done := make(chan int)
 	go func() {
@@ -275,6 +280,8 @@ func (s *AgiSession) parseEnv() ([]byte, error) {
 	agiEnv := make([]byte, 0, agiEnvSize)
 	buf := bufio.NewReader(s.ClientCon)
 
+	// Read the AGI enviroment, store all vars in agiEnv except 'agi_request'.
+	// Request is stored separately for parsing and further processing.
 	for i := 0; i <= agiEnvMax; i++ {
 		line, err := buf.ReadBytes(10)
 		if err != nil || len(line) <= len("\r\n") {
@@ -300,26 +307,21 @@ func (s *AgiSession) parseEnv() ([]byte, error) {
 func (s *AgiSession) route() error {
 	var err error
 	client := s.ClientCon.RemoteAddr()
-
 	path := strings.TrimPrefix(s.Request.Path, "/")
-	if debug {
-		log.Printf("%v: Request for: %s\n", client, path)
-	}
+
+	// Find route
 	dest, ok := rtable[path]
-	if ok {
-		if debug {
-			log.Printf("%v: Found route for %s\n", client, path)
-		}
-	} else {
+	if !ok {
 		dest, ok = rtable[wildCard]
 		if !ok {
-			err = fmt.Errorf("%v: No route found for %s", client, path)
-			return err
-		}
-		if debug {
-			log.Printf("%v: Using wildcard route for %s\n", client, path)
+			return fmt.Errorf("%v: No route found for %s", client, path)
 		}
 	}
+	if debug {
+		log.Printf("%v: Found route for %s\n", client, path)
+	}
+
+	// Find available servers
 	hosts := make([]Server, 0, len(dest.Hosts))
 	for srv, pref := range dest.Hosts {
 		pref.RLock()
@@ -334,18 +336,22 @@ func (s *AgiSession) route() error {
 	if len(hosts) == 0 {
 		return fmt.Errorf("%v: No routes available", client)
 	}
+
+	// Sort server list
 	if dest.Mode == "balance" {
-		// Load Balance mode: Sort server by number of active sessions
-		sort.Sort(PerActive(hosts))
+		// Load Balance mode: Sort servers by number of active sessions
+		sort.Sort(ByActive(hosts))
 	} else {
-		// Failover mode: Sort server list by priority
-		sort.Sort(PerPriority(hosts))
+		// Failover mode: Sort servers list by priority
+		sort.Sort(ByPriority(hosts))
 	}
+
+	// Connect to first available server
 	for _, server := range hosts {
 		s.ServerCon, err = net.DialTimeout("tcp", server.Host, dialTimeout)
 		if err == nil {
 			s.Request.Host = server.Host
-			updateCount(path, server.Host, 1)
+			go updateCount(path, server.Host, 1)
 			break
 		} else if debug {
 			log.Printf("%v: Failed to connect to %s\n", client, server.Host)
