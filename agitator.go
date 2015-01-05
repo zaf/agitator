@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"runtime/pprof"
 	"sort"
 	"strconv"
 	"strings"
@@ -54,6 +55,7 @@ type AgiSession struct {
 	ClientCon net.Conn
 	ServerCon net.Conn
 	Request   *url.URL
+	Server    *Server
 }
 
 // Config file struct
@@ -75,26 +77,20 @@ type RouteTable map[string]*Path
 
 // Path struct holds a list of hosts and the routing mode
 type Path struct {
-	Hosts map[string]*SrvPref
-	Mode  string
-}
-
-// SrvPref holds the priority and the number of active sessions
-type SrvPref struct {
 	sync.RWMutex
-	Priority int
-	Count    int
+	Hosts []*Server
+	Mode  string
 }
 
 // Server struct holds the server address, priority and the number of active sessions
 type Server struct {
-	Host     string
-	Priority int
-	Count    int
+	sync.RWMutex
+	Host  string
+	Count int
 }
 
-// ByActive implements sort.Interface for []Server based on the Count field
-type ByActive []Server
+// ByActive implements sort.Interface for []*Server based on the Count field
+type ByActive []*Server
 
 func (s ByActive) Len() int {
 	return len(s)
@@ -105,29 +101,31 @@ func (s ByActive) Swap(i, j int) {
 }
 
 func (s ByActive) Less(i, j int) bool {
-	return s[i].Count < s[j].Count
-}
-
-// ByPriority implements sort.Interface for []Server based on the Priority field
-type ByPriority []Server
-
-func (s ByPriority) Len() int {
-	return len(s)
-}
-
-func (s ByPriority) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
-}
-
-func (s ByPriority) Less(i, j int) bool {
-	return s[i].Priority < s[j].Priority
+	s[i].RLock()
+	s[j].RLock()
+	res := s[i].Count < s[j].Count
+	s[i].RUnlock()
+	s[j].RUnlock()
+	return res
 }
 
 func main() {
 	// Parse Config file
 	var config Config
 	var confFile = flag.String("conf", confPath, "Configuration file")
+	var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 	flag.Parse()
+
+	// Profiling
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
+
 	_, err := toml.DecodeFile(*confFile, &config)
 	if err != nil {
 		log.Fatal(err)
@@ -197,7 +195,7 @@ func genRtable(conf Config) RouteTable {
 			log.Println("No routes for", path)
 			continue
 		}
-		p := Path{}
+		p := new(Path)
 		switch app.Mode {
 		case "", "failover":
 			p.Mode = "failover"
@@ -207,18 +205,17 @@ func genRtable(conf Config) RouteTable {
 			log.Println("Invalid mode for", path)
 			continue
 		}
-		p.Hosts = make(map[string]*SrvPref, len(app.Hosts))
-		for i, host := range app.Hosts {
+		p.Hosts = make([]*Server, 0, len(app.Hosts))
+		for _, host := range app.Hosts {
 			if strings.Index(host, ":") == -1 || strings.Index(host, "]") == len(host)-1 {
 				// Add default port to host string if not present
 				host += agiPort
 			}
-			s := SrvPref{}
-			s.Priority = i
-			s.Count = 0
-			p.Hosts[host] = &s
+			s := new(Server)
+			s.Host = host
+			p.Hosts = append(p.Hosts, s)
 		}
-		table[path] = &p
+		table[path] = p
 	}
 	return table
 }
@@ -246,6 +243,7 @@ func connHandle(conn net.Conn, wg *sync.WaitGroup) {
 		return
 	}
 	defer sess.ServerCon.Close()
+	updateCount(sess.Server, 1)
 
 	// Send the AGI env to the server.
 	env = append(env, []byte("agi_request: "+sess.Request.String()+"\n\r\n")...)
@@ -269,7 +267,7 @@ func connHandle(conn net.Conn, wg *sync.WaitGroup) {
 	}
 	<-done
 	close(done)
-	updateCount(strings.TrimPrefix(sess.Request.Path, "/"), sess.Request.Host, -1)
+	updateCount(sess.Server, -1)
 	return
 }
 
@@ -310,66 +308,49 @@ func (s *AgiSession) route() error {
 	path := strings.TrimPrefix(s.Request.Path, "/")
 
 	// Find route
-	dest, ok := rtable[path]
-	if !ok {
-		dest, ok = rtable[wildCard]
-		if !ok {
+	if _, ok := rtable[path]; !ok {
+		if _, ok = rtable[wildCard]; !ok {
 			return fmt.Errorf("%v: No route found for %s", client, path)
 		}
+		path = wildCard
 	}
 	if debug {
-		log.Printf("%v: Found route for %s\n", client, path)
+		log.Printf("%v: Found route\n", client)
+	}
+	// Load Balance mode: Sort servers by number of active sessions
+	if rtable[path].Mode == "balance" {
+		rtable[path].Lock()
+		sort.Sort(ByActive(rtable[path].Hosts))
+		rtable[path].Unlock()
 	}
 
-	// Find available servers
-	hosts := make([]Server, 0, len(dest.Hosts))
-	for srv, pref := range dest.Hosts {
-		pref.RLock()
-		if climit > 0 && pref.Count >= climit {
-			pref.RUnlock()
-			log.Printf("%v: Reached connections limit in %s\n", client, srv)
+	// Find available servers and connect
+	for i := 0; i < len(rtable[path].Hosts); i++ {
+		server := rtable[path].Hosts[i]
+		server.RLock()
+		if climit > 0 && server.Count >= climit {
+			server.RUnlock()
+			log.Printf("%v: Reached connections limit in %s\n", client, server.Host)
 			continue
 		}
-		hosts = append(hosts, Server{srv, pref.Priority, pref.Count})
-		pref.RUnlock()
-	}
-	if len(hosts) == 0 {
-		return fmt.Errorf("%v: No routes available", client)
-	}
-
-	// Sort server list
-	if dest.Mode == "balance" {
-		// Load Balance mode: Sort servers by number of active sessions
-		sort.Sort(ByActive(hosts))
-	} else {
-		// Failover mode: Sort servers list by priority
-		sort.Sort(ByPriority(hosts))
-	}
-
-	// Connect to first available server
-	for _, server := range hosts {
+		server.RUnlock()
 		s.ServerCon, err = net.DialTimeout("tcp", server.Host, dialTimeout)
 		if err == nil {
 			s.Request.Host = server.Host
-			go updateCount(path, server.Host, 1)
-			break
+			s.Server = server
+			return err
 		} else if debug {
 			log.Printf("%v: Failed to connect to %s\n", client, server.Host)
 		}
 	}
-	return err
+
+	//No servers found
+	return fmt.Errorf("%v: Unable to connect to any server", client)
 }
 
 // Update active session counter
-func updateCount(req, host string, i int) {
-	for _, path := range []string{req, wildCard} {
-		if dest, ok := rtable[path]; ok {
-			if _, ok := dest.Hosts[host]; ok {
-				dest.Hosts[host].Lock()
-				dest.Hosts[host].Count += i
-				dest.Hosts[host].Unlock()
-				return
-			}
-		}
-	}
+func updateCount(srv *Server, i int) {
+	srv.Lock()
+	srv.Count += i
+	srv.Unlock()
 }
