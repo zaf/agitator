@@ -22,7 +22,6 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"runtime/pprof"
 	"sort"
 	"strconv"
 	"strings"
@@ -113,18 +112,7 @@ func main() {
 	// Parse Config file
 	var config Config
 	var confFile = flag.String("conf", confPath, "Configuration file")
-	var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 	flag.Parse()
-
-	// Profiling
-	if *cpuprofile != "" {
-		f, err := os.Create(*cpuprofile)
-		if err != nil {
-			log.Fatal(err)
-		}
-		pprof.StartCPUProfile(f)
-		defer pprof.StopCPUProfile()
-	}
 
 	_, err := toml.DecodeFile(*confFile, &config)
 	if err != nil {
