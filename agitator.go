@@ -27,6 +27,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -43,6 +44,7 @@ const (
 )
 
 var (
+	confFile    = flag.String("conf", confPath, "Configuration file")
 	rtable      RouteTable
 	dialTimeout time.Duration
 	climit      int
@@ -109,11 +111,10 @@ func (s ByActive) Less(i, j int) bool {
 }
 
 func main() {
-	// Parse Config file
-	var config Config
-	var confFile = flag.String("conf", confPath, "Configuration file")
 	flag.Parse()
 
+	// Parse Config file
+	var config Config
 	_, err := toml.DecodeFile(*confFile, &config)
 	if err != nil {
 		log.Fatal(err)
@@ -138,10 +139,13 @@ func main() {
 		log.Fatal("No routes specified")
 	}
 
-	// Handle interrupts
+	wg := new(sync.WaitGroup)
+	// Handle signals
 	var shutdown int32
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGHUP)
+	wg.Add(1)
+	go sigHandle(sigChan, &shutdown, wg)
 
 	// Create a listener and start a new goroutine for each connection.
 	addr := config.Listen + ":" + strconv.Itoa(config.Port)
@@ -151,7 +155,6 @@ func main() {
 		log.Fatal(err)
 	}
 	defer ln.Close()
-	wg := new(sync.WaitGroup)
 
 	go func() {
 		for atomic.LoadInt32(&shutdown) == 0 {
@@ -168,9 +171,6 @@ func main() {
 		}
 	}()
 
-	signal := <-sigChan
-	log.Printf("Received %v, Waiting for remaining sessions to end to exit.\n", signal)
-	atomic.StoreInt32(&shutdown, 1)
 	wg.Wait()
 	return
 }
@@ -341,4 +341,34 @@ func updateCount(srv *Server, i int) {
 	srv.Lock()
 	srv.Count += i
 	srv.Unlock()
+}
+
+// Signal handler. SIGINT exits cleanly, SIGHUP reloads config.
+func sigHandle(schan <-chan os.Signal, s *int32, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for {
+		signal := <-schan
+		switch signal {
+		case os.Interrupt:
+			log.Printf("Received %v, Waiting for remaining sessions to end to exit.\n", signal)
+			atomic.StoreInt32(s, 1)
+			return
+		case syscall.SIGHUP:
+			log.Printf("Received %v, reloading routing rules from config file\n", signal)
+			var config Config
+			_, err := toml.DecodeFile(*confFile, &config)
+			if err != nil {
+				log.Println("Failed to read config file:", err)
+				break
+			}
+			// Generate routing table from config file data
+			table := genRtable(config)
+			if len(table) == 0 {
+				log.Println("No routes specified, using old config data.")
+				break
+			}
+			rtable = table
+
+		}
+	}
 }

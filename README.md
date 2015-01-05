@@ -9,6 +9,7 @@ Suppots:
 * Request based routing
 * Load balancing
 * HA - Failover
+* On the fly config reloading
 
 Copyright (C) 2014 - 2015, Lefteris Zafiris <zaf.000@gmail.com>
 
