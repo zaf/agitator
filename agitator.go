@@ -74,10 +74,13 @@ type Config struct {
 }
 
 // RouteTable holds the routing table
-type RouteTable map[string]*Path
+type RouteTable struct {
+	sync.RWMutex
+	Route map[string]*Destination
+}
 
-// Path struct holds a list of hosts and the routing mode
-type Path struct {
+// Destination struct holds a list of hosts and the routing mode
+type Destination struct {
 	sync.RWMutex
 	Hosts []*Server
 	Mode  string
@@ -134,10 +137,13 @@ func main() {
 	debug = config.Debug
 
 	// Generate routing table from config file data
-	rtable = genRtable(config)
-	if len(rtable) == 0 {
-		log.Fatal("No routes specified")
+	table, err := genRtable(config)
+	if err != nil {
+		log.Fatal(err)
 	}
+	rtable.Lock()
+	rtable.Route = table
+	rtable.Unlock()
 
 	wg := new(sync.WaitGroup)
 	// Handle signals
@@ -173,39 +179,6 @@ func main() {
 
 	wg.Wait()
 	return
-}
-
-// Generate Routing table from config data
-func genRtable(conf Config) RouteTable {
-	table := make(RouteTable, len(conf.Route))
-	for path, app := range conf.Route {
-		if len(app.Hosts) == 0 {
-			log.Println("No routes for", path)
-			continue
-		}
-		p := new(Path)
-		switch app.Mode {
-		case "", "failover":
-			p.Mode = "failover"
-		case "balance":
-			p.Mode = "balance"
-		default:
-			log.Println("Invalid mode for", path)
-			continue
-		}
-		p.Hosts = make([]*Server, 0, len(app.Hosts))
-		for _, host := range app.Hosts {
-			if strings.Index(host, ":") == -1 || strings.Index(host, "]") == len(host)-1 {
-				// Add default port to host string if not present
-				host += agiPort
-			}
-			s := new(Server)
-			s.Host = host
-			p.Hosts = append(p.Hosts, s)
-		}
-		table[path] = p
-	}
-	return table
 }
 
 // Connection handler. Find route, connect to remote server and relay data.
@@ -296,25 +269,28 @@ func (s *AgiSession) route() error {
 	path := strings.TrimPrefix(s.Request.Path, "/")
 
 	// Find route
-	if _, ok := rtable[path]; !ok {
-		if _, ok = rtable[wildCard]; !ok {
+	rtable.RLock()
+	defer rtable.RUnlock()
+	dest, ok := rtable.Route[path]
+	if !ok {
+		dest, ok = rtable.Route[wildCard]
+		if !ok {
 			return fmt.Errorf("%v: No route found for %s", client, path)
 		}
-		path = wildCard
 	}
 	if debug {
 		log.Printf("%v: Found route\n", client)
 	}
 	// Load Balance mode: Sort servers by number of active sessions
-	if rtable[path].Mode == "balance" {
-		rtable[path].Lock()
-		sort.Sort(ByActive(rtable[path].Hosts))
-		rtable[path].Unlock()
+	if dest.Mode == "balance" {
+		dest.Lock()
+		sort.Sort(ByActive(dest.Hosts))
+		dest.Unlock()
 	}
 
 	// Find available servers and connect
-	for i := 0; i < len(rtable[path].Hosts); i++ {
-		server := rtable[path].Hosts[i]
+	for i := 0; i < len(dest.Hosts); i++ {
+		server := dest.Hosts[i]
 		server.RLock()
 		if climit > 0 && server.Count >= climit {
 			server.RUnlock()
@@ -362,13 +338,51 @@ func sigHandle(schan <-chan os.Signal, s *int32, wg *sync.WaitGroup) {
 				break
 			}
 			// Generate routing table from config file data
-			table := genRtable(config)
-			if len(table) == 0 {
+			table, err := genRtable(config)
+			if err != nil {
 				log.Println("No routes specified, using old config data.")
 				break
 			}
-			rtable = table
-
+			rtable.Lock()
+			rtable.Route = table
+			rtable.Unlock()
 		}
 	}
+}
+
+// Generate Routing table from config data
+func genRtable(conf Config) (map[string]*Destination, error) {
+	var err error
+	table := make(map[string]*Destination, len(conf.Route))
+	for path, app := range conf.Route {
+		if len(app.Hosts) == 0 {
+			log.Println("No routes for", path)
+			continue
+		}
+		p := new(Destination)
+		switch app.Mode {
+		case "", "failover":
+			p.Mode = "failover"
+		case "balance":
+			p.Mode = "balance"
+		default:
+			log.Println("Invalid mode for", path)
+			continue
+		}
+		p.Hosts = make([]*Server, 0, len(app.Hosts))
+		for _, host := range app.Hosts {
+			if strings.Index(host, ":") == -1 || strings.Index(host, "]") == len(host)-1 {
+				// Add default port to host string if not present
+				host += agiPort
+			}
+			s := new(Server)
+			s.Host = host
+			p.Hosts = append(p.Hosts, s)
+		}
+		table[path] = p
+	}
+	if len(table) == 0 {
+		err = fmt.Errorf("No routes specified")
+	}
+	return table, err
 }
