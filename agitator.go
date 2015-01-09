@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	pathparse "path"
 	"sort"
 	"strconv"
 	"strings"
@@ -204,7 +205,7 @@ func connHandle(conn net.Conn, wg *sync.WaitGroup) {
 		return
 	}
 	defer sess.ServerCon.Close()
-	updateCount(sess.Server, 1)
+	sess.Server.updateCount(1)
 
 	// Send the AGI env to the server.
 	env = append(env, []byte("agi_request: "+sess.Request.String()+"\n\r\n")...)
@@ -228,7 +229,7 @@ func connHandle(conn net.Conn, wg *sync.WaitGroup) {
 	}
 	<-done
 	close(done)
-	updateCount(sess.Server, -1)
+	sess.Server.updateCount(-1)
 	return
 }
 
@@ -265,13 +266,19 @@ func (s *AgiSession) parseEnv() ([]byte, error) {
 // Route based on reguest path
 func (s *AgiSession) route() error {
 	var err error
+	var ok bool
+	var dest *Destination
 	client := s.ClientCon.RemoteAddr()
 	path := strings.TrimPrefix(s.Request.Path, "/")
 
 	// Find route
 	rtable.RLock()
 	defer rtable.RUnlock()
-	dest, ok := rtable.Route[path]
+	for !ok && path != "" {
+		dest, ok = rtable.Route[path]
+		path, _ = pathparse.Split(path)
+		path = strings.TrimSuffix(path, "/")
+	}
 	if !ok {
 		dest, ok = rtable.Route[wildCard]
 		if !ok {
@@ -313,10 +320,10 @@ func (s *AgiSession) route() error {
 }
 
 // Update active session counter
-func updateCount(srv *Server, i int) {
-	srv.Lock()
-	srv.Count += i
-	srv.Unlock()
+func (s *Server) updateCount(i int) {
+	s.Lock()
+	s.Count += i
+	s.Unlock()
 }
 
 // Signal handler. SIGINT exits cleanly, SIGHUP reloads config.
