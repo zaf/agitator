@@ -115,6 +115,7 @@ func (s ByActive) Less(i, j int) bool {
 }
 
 func main() {
+	log.SetFlags(0)
 	flag.Parse()
 
 	// Parse Config file
