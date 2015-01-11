@@ -68,9 +68,14 @@ type Config struct {
 	Conlim  int
 	Log     string
 	Debug   bool
-	Route   map[string]struct {
-		Hosts []string
-		Mode  string
+	Route   []struct {
+		Path string
+		Mode string
+		Host []struct {
+			Addr string
+			Port string
+			Tls  bool
+		}
 	}
 }
 
@@ -91,6 +96,7 @@ type Destination struct {
 type Server struct {
 	sync.RWMutex
 	Host  string
+	Tls   bool
 	Count int
 }
 
@@ -362,32 +368,32 @@ func sigHandle(schan <-chan os.Signal, s *int32, wg *sync.WaitGroup) {
 func genRtable(conf Config) (map[string]*Destination, error) {
 	var err error
 	table := make(map[string]*Destination, len(conf.Route))
-	for path, app := range conf.Route {
-		if len(app.Hosts) == 0 {
-			log.Println("No routes for", path)
+	for _, route := range conf.Route {
+		if len(route.Host) == 0 {
+			log.Println("No routes for", route.Path)
 			continue
 		}
 		p := new(Destination)
-		switch app.Mode {
+		switch route.Mode {
 		case "", "failover":
 			p.Mode = "failover"
 		case "balance":
 			p.Mode = "balance"
 		default:
-			log.Println("Invalid mode for", path)
+			log.Println("Invalid mode for", route.Path)
 			continue
 		}
-		p.Hosts = make([]*Server, 0, len(app.Hosts))
-		for _, host := range app.Hosts {
-			if strings.Index(host, ":") == -1 || strings.Index(host, "]") == len(host)-1 {
-				// Add default port to host string if not present
-				host += agiPort
+		p.Hosts = make([]*Server, 0, len(route.Host))
+		for _, server := range route.Host {
+			if server.Port == "" {
+				server.Port = agiPort
 			}
 			s := new(Server)
-			s.Host = host
+			s.Host = server.Addr + ":" + server.Port
+			s.Tls = server.Tls
 			p.Hosts = append(p.Hosts, s)
 		}
-		table[path] = p
+		table[route.Path] = p
 	}
 	if len(table) == 0 {
 		err = fmt.Errorf("No routes specified")
