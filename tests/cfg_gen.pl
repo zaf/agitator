@@ -16,16 +16,20 @@ my $num_paths = $ARGV[0];
 my $num_hosts = $ARGV[1];
 my @chars = ("A".."Z", "a".."z", "/");
 
-my $general = "listen = \"0.0.0.0\"\nport = 4573\ntimeout = 3\nconlim = 16384\nlog = \"stdout\"\ndebug = false\n";
-my $host = "\n\t\[\[route.host\]\]\n\taddr = \"localhost\"\n\tport= \"4546\"\n\ttls = false\n";
+my $general = "listen = \"0.0.0.0\"\nport = 4573\ntls = true\ntls_listen = \"0.0.0.0\"\ntls_port = 4574\ntls_cert = \"tests/public.crt\"\n"
+		. "tls_key  = \"tests/secret.key\"\ntimeout = 3\nconlim = 16384\nlog = \"stdout\"\ndebug = false\n";
+my $host = "\n\t\[\[route.host\]\]\n\taddr = \"localhost\"\n\tport= \"4545\"\n\ttls = false\n";
 
 print $general;
 
 if ($num_paths) {
 	for (1..$num_paths) {
 		my $path;
-		$path .= $chars[rand @chars] for 0..9;
-		$path = "*" if $_ == 1;
+		if ($_ == 1) {
+			$path = "*";
+		} else {
+			$path .= $chars[rand @chars] for 0..9;
+		}
 		print "\n\[\[route\]\]\npath = \"$path\"\n";
 		print "mode = \"balance\"\n" if ($_ % 2 != 0);
 		print $host x $num_hosts;

@@ -13,6 +13,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/rand"
 	"crypto/tls"
 	"flag"
 	"fmt"
@@ -63,13 +64,18 @@ type AgiSession struct {
 
 // Config file struct
 type Config struct {
-	Listen  string
-	Port    int
-	Timeout int
-	Conlim  int
-	Log     string
-	Debug   bool
-	Route   []struct {
+	Listen    string
+	Port      int
+	Tls       bool
+	TlsCert   string `toml:"tls_cert"`
+	TlsKey    string `toml:"tls_key"`
+	TlsListen string `toml:"tls_listen"`
+	TlsPort   int    `toml:"tls_port"`
+	Timeout   int
+	Conlim    int
+	Log       string
+	Debug     bool
+	Route     []struct {
 		Path string
 		Mode string
 		Host []struct {
@@ -186,6 +192,39 @@ func main() {
 		}
 	}()
 
+	// Create a TLS listener
+	if config.Tls {
+		cert, err := tls.LoadX509KeyPair(config.TlsCert, config.TlsKey)
+		if err != nil {
+			log.Fatal(err)
+		}
+		tlsConf := tls.Config{Certificates: []tls.Certificate{cert}, ClientAuth: tls.RequireAnyClientCert}
+		tlsConf.Rand = rand.Reader
+		tlsSrv := config.TlsListen + ":" + strconv.Itoa(config.TlsPort)
+		log.Printf("Listening for TLS connections on %v\n", tlsSrv)
+		tlsLn, err := tls.Listen("tcp", tlsSrv, &tlsConf)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer tlsLn.Close()
+
+		go func() {
+			for atomic.LoadInt32(&shutdown) == 0 {
+				conn, err := tlsLn.Accept()
+				if err != nil {
+					log.Println(err)
+					continue
+				}
+				if debug {
+					log.Printf("%v: Connected to %v\n", conn.RemoteAddr(), conn.LocalAddr())
+				}
+				wg.Add(1)
+				go connHandle(conn, wg)
+			}
+		}()
+	}
+
+	config = Config{}
 	wg.Wait()
 	return
 }
