@@ -13,6 +13,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"io"
@@ -312,7 +313,12 @@ func (s *AgiSession) route() error {
 			continue
 		}
 		server.RUnlock()
-		s.ServerCon, err = net.DialTimeout("tcp", server.Host, dialTimeout)
+		if server.Tls {
+			tslConf := tls.Config{InsecureSkipVerify: false}
+			s.ServerCon, err = tls.Dial("tcp", server.Host, &tslConf)
+		} else {
+			s.ServerCon, err = net.DialTimeout("tcp", server.Host, dialTimeout)
+		}
 		if err == nil {
 			s.Request.Host = server.Host
 			s.Server = server
