@@ -198,7 +198,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		tlsConf := tls.Config{Certificates: []tls.Certificate{cert}, ClientAuth: tls.RequireAnyClientCert}
+		tlsConf := tls.Config{Certificates: []tls.Certificate{cert}}
 		tlsConf.Rand = rand.Reader
 		tlsSrv := config.TlsListen + ":" + strconv.Itoa(config.TlsPort)
 		log.Printf("Listening for TLS connections on %v\n", tlsSrv)
@@ -353,7 +353,7 @@ func (s *AgiSession) route() error {
 		}
 		server.RUnlock()
 		if server.Tls {
-			tslConf := tls.Config{InsecureSkipVerify: false}
+			tslConf := tls.Config{InsecureSkipVerify: true}
 			s.ServerCon, err = tls.Dial("tcp", server.Host, &tslConf)
 		} else {
 			s.ServerCon, err = net.DialTimeout("tcp", server.Host, dialTimeout)
@@ -363,7 +363,7 @@ func (s *AgiSession) route() error {
 			s.Server = server
 			return err
 		} else if debug {
-			log.Printf("%v: Failed to connect to %s\n", client, server.Host)
+			log.Printf("%v: Failed to connect to %s, %s\n", client, server.Host, err)
 		}
 	}
 
