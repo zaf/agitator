@@ -7,6 +7,7 @@ A reverse proxy for the FastAGI protocol
 Features:
 
 * Request based routing
+* TLS support
 * Load balancing
 * HA - Failover
 * On the fly config reloading
