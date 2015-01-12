@@ -66,11 +66,11 @@ type AgiSession struct {
 type Config struct {
 	Listen    string
 	Port      int
-	Tls       bool
-	TlsCert   string `toml:"tls_cert"`
-	TlsKey    string `toml:"tls_key"`
-	TlsListen string `toml:"tls_listen"`
-	TlsPort   int    `toml:"tls_port"`
+	TLS       bool
+	TLSCert   string `toml:"tls_cert"`
+	TLSKey    string `toml:"tls_key"`
+	TLSListen string `toml:"tls_listen"`
+	TLSPort   int    `toml:"tls_port"`
 	Timeout   int
 	Conlim    int
 	Log       string
@@ -81,7 +81,7 @@ type Config struct {
 		Host []struct {
 			Addr string
 			Port string
-			Tls  bool
+			TLS  bool
 		}
 	}
 }
@@ -103,7 +103,7 @@ type Destination struct {
 type Server struct {
 	sync.RWMutex
 	Host  string
-	Tls   bool
+	TLS   bool
 	Count int
 }
 
@@ -193,14 +193,14 @@ func main() {
 	}()
 
 	// Create a TLS listener
-	if config.Tls {
-		cert, err := tls.LoadX509KeyPair(config.TlsCert, config.TlsKey)
+	if config.TLS {
+		cert, err := tls.LoadX509KeyPair(config.TLSCert, config.TLSKey)
 		if err != nil {
 			log.Fatal(err)
 		}
 		tlsConf := tls.Config{Certificates: []tls.Certificate{cert}}
 		tlsConf.Rand = rand.Reader
-		tlsSrv := config.TlsListen + ":" + strconv.Itoa(config.TlsPort)
+		tlsSrv := config.TLSListen + ":" + strconv.Itoa(config.TLSPort)
 		log.Printf("Listening for TLS connections on %v\n", tlsSrv)
 		tlsLn, err := tls.Listen("tcp", tlsSrv, &tlsConf)
 		if err != nil {
@@ -352,7 +352,7 @@ func (s *AgiSession) route() error {
 			continue
 		}
 		server.RUnlock()
-		if server.Tls {
+		if server.TLS {
 			tslConf := tls.Config{InsecureSkipVerify: true}
 			s.ServerCon, err = tls.Dial("tcp", server.Host, &tslConf)
 		} else {
@@ -435,7 +435,7 @@ func genRtable(conf Config) (map[string]*Destination, error) {
 			}
 			s := new(Server)
 			s.Host = server.Addr + ":" + server.Port
-			s.Tls = server.Tls
+			s.TLS = server.TLS
 			p.Hosts = append(p.Hosts, s)
 		}
 		table[route.Path] = p
