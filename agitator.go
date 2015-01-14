@@ -316,18 +316,17 @@ func (s *AgiSession) parseEnv() ([]byte, error) {
 // Route based on reguest path
 func (s *AgiSession) route() error {
 	var err error
-	var ok bool
-	var dest *Destination
 	client := s.ClientCon.RemoteAddr()
 	path := strings.TrimPrefix(s.Request.Path, "/")
 
 	// Find route
 	rtable.RLock()
 	defer rtable.RUnlock()
+	dest, ok := rtable.Route[path]
 	for !ok && path != "" {
-		dest, ok = rtable.Route[path]
 		path, _ = pathparse.Split(path)
 		path = strings.TrimSuffix(path, "/")
+		dest, ok = rtable.Route[path]
 	}
 	if !ok {
 		dest, ok = rtable.Route[wildCard]
@@ -392,7 +391,7 @@ func sigHandle(schan <-chan os.Signal, s *int32, wg *sync.WaitGroup) {
 			atomic.StoreInt32(s, 1)
 			return
 		case syscall.SIGHUP:
-			log.Printf("Received %v, reloading routing rules from config file\n", signal)
+			log.Printf("Received %v, reloading routing rules from config file %s\n", signal, *confFile)
 			var config Config
 			_, err := toml.DecodeFile(*confFile, &config)
 			if err != nil {
