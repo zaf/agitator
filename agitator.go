@@ -24,7 +24,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	pathparse "path"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -43,11 +43,10 @@ const (
 	agiEnvSize = 512
 	wildCard   = "*"
 	agiPort    = ":4573"
-	confPath   = "/etc/agitator.conf"
 )
 
 var (
-	confFile    = flag.String("conf", confPath, "Configuration file")
+	confFile    = flag.String("conf", "/etc/agitator.conf", "Configuration file")
 	rtable      RouteTable
 	dialTimeout time.Duration
 	climit      int
@@ -317,21 +316,21 @@ func (s *AgiSession) parseEnv() ([]byte, error) {
 func (s *AgiSession) route() error {
 	var err error
 	client := s.ClientCon.RemoteAddr()
-	path := strings.TrimPrefix(s.Request.Path, "/")
+	reqPath := strings.TrimPrefix(s.Request.Path, "/")
 
 	// Find route
 	rtable.RLock()
 	defer rtable.RUnlock()
-	dest, ok := rtable.Route[path]
-	for !ok && path != "" {
-		path, _ = pathparse.Split(path)
-		path = strings.TrimSuffix(path, "/")
-		dest, ok = rtable.Route[path]
+	dest, ok := rtable.Route[reqPath]
+	for !ok && reqPath != "" {
+		reqPath, _ = path.Split(reqPath)
+		reqPath = strings.TrimSuffix(reqPath, "/")
+		dest, ok = rtable.Route[reqPath]
 	}
 	if !ok {
 		dest, ok = rtable.Route[wildCard]
 		if !ok {
-			return fmt.Errorf("%v: No route found for %s", client, path)
+			return fmt.Errorf("%v: No route found for %s", client, reqPath)
 		}
 	}
 	if debug {
