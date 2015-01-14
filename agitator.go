@@ -52,6 +52,7 @@ var (
 	dialTimeout time.Duration
 	climit      int
 	debug       bool
+	skipVerify  bool
 )
 
 // AgiSession struct
@@ -67,6 +68,7 @@ type Config struct {
 	Listen    string
 	Port      int
 	TLS       bool
+	TLSStrict bool   `toml:"tls_strict"`
 	TLSCert   string `toml:"tls_cert"`
 	TLSKey    string `toml:"tls_key"`
 	TLSListen string `toml:"tls_listen"`
@@ -150,6 +152,7 @@ func main() {
 	dialTimeout = time.Duration(float64(config.Timeout)) * time.Second
 	climit = config.Conlim
 	debug = config.Debug
+	skipVerify = !config.TLSStrict
 
 	// Generate routing table from config file data
 	table, err := genRtable(config)
@@ -198,7 +201,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		tlsConf := tls.Config{Certificates: []tls.Certificate{cert}}
+		tlsConf := tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS10}
 		tlsConf.Rand = rand.Reader
 		tlsSrv := config.TLSListen + ":" + strconv.Itoa(config.TLSPort)
 		log.Printf("Listening for TLS connections on %v\n", tlsSrv)
@@ -353,7 +356,7 @@ func (s *AgiSession) route() error {
 		}
 		server.RUnlock()
 		if server.TLS {
-			tslConf := tls.Config{InsecureSkipVerify: true}
+			tslConf := tls.Config{InsecureSkipVerify: skipVerify}
 			s.ServerCon, err = tls.Dial("tcp", server.Host, &tslConf)
 		} else {
 			s.ServerCon, err = net.DialTimeout("tcp", server.Host, dialTimeout)

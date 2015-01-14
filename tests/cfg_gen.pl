@@ -16,7 +16,7 @@ my $num_paths = $ARGV[0];
 my $num_hosts = $ARGV[1];
 my @chars = ("A".."Z", "a".."z", "/");
 
-my $general = "listen = \"0.0.0.0\"\nport = 4573\ntls = true\ntls_listen = \"0.0.0.0\"\ntls_port = 4574\ntls_cert = \"tests/public.crt\"\n"
+my $general = "listen = \"0.0.0.0\"\nport = 4573\ntls_strict = true\ntls = true\ntls_listen = \"0.0.0.0\"\ntls_port = 4574\ntls_cert = \"tests/public.crt\"\n"
 		. "tls_key  = \"tests/secret.key\"\ntimeout = 3\nconlim = 16384\nlog = \"stdout\"\ndebug = false\n";
 my $host = "\n\t\[\[route.host\]\]\n\taddr = \"localhost\"\n\tport= \"4545\"\n\ttls = false\n";
 
