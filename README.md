@@ -2,7 +2,7 @@
 
 A reverse proxy for the FastAGI protocol
 
-!!Work in progress !!
+!! Work in progress !!
 
 Features:
 
@@ -29,7 +29,7 @@ Topology examples:
 
 ![alt text](https://raw.githubusercontent.com/zaf/agitator/master/doc/example-2.png)
 
-See sample config file for configuration details.
+See sample [config file](https://github.com/zaf/agitator/blob/master/sample.conf) for configuration details.
 
 ---
 
