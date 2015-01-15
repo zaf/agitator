@@ -21,7 +21,7 @@
 
 prog="agitator"
 config="/etc/agitator.conf"
-bin="/usr/local/sbin/agitator"
+bin="/usr/local/bin/agitator"
 params="-conf $config"
 lockfile=/var/lock/subsys/$prog
 
