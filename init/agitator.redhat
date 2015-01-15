@@ -1,0 +1,119 @@
+#!/bin/sh
+#
+# Agitator FastAGI Reverse proxy
+#
+# chkconfig: - 20 80
+# description: a reverse proxy for the FastAGI protocol
+#
+
+### BEGIN INIT INFO
+# Provides: agitator
+# Required-Start: $local_fs $syslog $network
+# Required-Stop: $local_fs $syslog $network
+# Default-Start: 2 3 4 5
+# Default-Stop: 0 1 6
+# Short-Description: start and stop agitator
+# Description: agitator is a reverse proxy for the FastAGI protocol
+### END INIT INFO
+
+# Source function library.
+. /etc/rc.d/init.d/functions
+
+prog="agitator"
+config="/etc/agitator.conf"
+bin="/usr/local/sbin/agitator"
+params="-conf $config"
+lockfile=/var/lock/subsys/$prog
+
+start() {
+    [ -x $bin ] || exit 5
+    [ -f $config ] || exit 6
+    echo -n $"Starting $prog: "
+    daemon $bin $params
+    retval=$?
+    echo
+    [ $retval -eq 0 ] && touch $lockfile
+    return $retval
+}
+
+stop() {
+    echo -n $"Stopping $prog: "
+    killproc $bin
+    retval=$?
+    echo
+    [ $retval -eq 0 ] && rm -f $lockfile
+    return $retval
+}
+
+stop_gracefully() {
+    echo -n $"Gracefully stopping $prog: "
+    killproc $bin -INT
+    retval=$?
+    echo
+    [ $retval -eq 0 ] && rm -f $lockfile
+    return $retval
+}
+
+restart() {
+    stop
+    start
+}
+
+restart_gracefully() {
+    stop_gracefully
+    start
+}
+
+reload() {
+	echo -n $"Reloading config $prog: "
+    killproc $bin -HUP
+    retval=$?
+    echo
+    return $retval
+}
+
+force_reload() {
+    restart
+}
+
+rh_status() {
+    # run checks to determine if the service is running or use generic status
+    status $prog
+}
+
+rh_status_q() {
+    rh_status >/dev/null 2>&1
+}
+
+
+case "$1" in
+    start)
+        rh_status_q && exit 0
+        $1
+        ;;
+    stop)
+        rh_status_q || exit 0
+        $1
+        ;;
+    restart)
+        $1
+        ;;
+    reload)
+        rh_status_q || exit 7
+        $1
+        ;;
+    force-reload)
+        force_reload
+        ;;
+    status)
+        rh_status
+        ;;
+    condrestart|try-restart)
+        rh_status_q || exit 0
+        restart
+        ;;
+    *)
+        echo $"Usage: $0 {start|stop|stop_gracefully|status|restart|restart_gracefully|condrestart|try-restart|reload|force-reload}"
+        exit 2
+esac
+exit $?
