@@ -1,0 +1,21 @@
+#!/bin/sh
+#
+# Agitator FastAGI Reverse proxy
+#
+
+if [ true != "$INIT_D_SCRIPT_SOURCED" ] ; then
+    set "$0" "$@"; INIT_D_SCRIPT_SOURCED=true . /lib/init/init-d-script
+fi
+
+### BEGIN INIT INFO
+# Provides:          agitator
+# Required-Start:    $local_fs $syslog $network
+# Required-Stop:     $local_fs $syslog $network
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: start and stop agitator
+# Description:       agitator is a reverse proxy for the FastAGI protocol.
+### END INIT INFO
+
+DESC="agitator FastAGI proxy"
+DAEMON=/usr/local/bin/agitator
