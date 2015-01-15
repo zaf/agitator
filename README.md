@@ -22,6 +22,7 @@ To run:
 	agitator -conf=/path/to/conf.file
 ```
 Topology examples:
+
 ![alt text](https://raw.githubusercontent.com/zaf/agitator/master/doc/example-1.png)
 
 ![alt text](https://raw.githubusercontent.com/zaf/agitator/master/doc/example-3.png)
