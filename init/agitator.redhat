@@ -22,7 +22,7 @@
 prog="agitator"
 bin="/usr/local/bin/agitator"
 config="/usr/local//etc/agitator.conf"
-params="-conf $config"
+params="-conf $config &"
 lockfile=/var/lock/subsys/$prog
 
 start() {
@@ -65,7 +65,7 @@ restart_gracefully() {
 }
 
 reload() {
-	echo -n $"Reloading config $prog: "
+	echo -n $"Reloading config for $prog: "
     killproc $bin -HUP
     retval=$?
     echo
@@ -93,6 +93,13 @@ case "$1" in
         ;;
     stop)
         rh_status_q || exit 0
+        $1
+        ;;
+	stop_gracefully)
+        rh_status_q || exit 0
+        $1
+        ;;
+    restart_gracefully)
         $1
         ;;
     restart)
