@@ -2,7 +2,7 @@
 
 A reverse proxy for the FastAGI protocol
 
-!!Work in progress - Not stable yet!!
+!!Work in progress !!
 
 Features:
 
@@ -21,6 +21,12 @@ To run:
 ```
 	agitator -conf=/path/to/conf.file
 ```
+Topology examples:
+![alt text](https://raw.githubusercontent.com/zaf/agitator/master/doc/example-1.png)
+
+![alt text](https://raw.githubusercontent.com/zaf/agitator/master/doc/example-3.png)
+
+![alt text](https://raw.githubusercontent.com/zaf/agitator/master/doc/example-2.png)
 
 See sample config file for configuration details.
 
