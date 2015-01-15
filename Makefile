@@ -16,7 +16,7 @@ clean:
 
 install: agitator
 	install agitator /usr/local/bin/
-	install -b -m 644 sample.conf /etc/agitator.conf
+	install -b -m 644 sample.conf /usr/local/etc/agitator.conf
 
 install_deps:
 	go get -u github.com/BurntSushi/toml

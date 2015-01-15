@@ -20,8 +20,8 @@
 . /etc/rc.d/init.d/functions
 
 prog="agitator"
-config="/etc/agitator.conf"
 bin="/usr/local/bin/agitator"
+config="/usr/local//etc/agitator.conf"
 params="-conf $config"
 lockfile=/var/lock/subsys/$prog
 
