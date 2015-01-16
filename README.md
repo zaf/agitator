@@ -5,22 +5,22 @@ A reverse proxy for the [FastAGI](https://wiki.asterisk.org/wiki/display/AST/AGI
 *Features:*
 
 * Request based routing
-Routes FastAGI sessions depending on the request URI.
+...Routes FastAGI sessions depending on the request URI.
 
 * TLS support
-Offers strong encryption support for FastAGI sessions.
+...Offers strong encryption support for FastAGI sessions.
 
 * Load balancing
-Distributes load evenly between FastAGI servers based on the number of active sessions.
+...Distributes load evenly between FastAGI servers based on the number of active sessions.
 
 * HA - Failover
-Can route traffic to stand-by servers when main server is not reachable, or has reached the number of maximum allowed sessions.
+...Can route traffic to stand-by servers when main server is not reachable, or has reached the number of maximum allowed sessions.
 
 * On the fly config reloading
-Routing rules can be reloaded/altered on the fly without restarting the proxy or dropping any connections.
+...Routing rules can be reloaded/altered on the fly without restarting the proxy or dropping any connections.
 
 * Syslog integration
-Can send logging and debug data to a syslog server.
+...Can send logging and debug data to a syslog server.
 
 To install:
 ```
