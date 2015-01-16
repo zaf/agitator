@@ -49,7 +49,6 @@ var (
 	confFile    = flag.String("conf", "/usr/local/etc/agitator.conf", "Configuration file")
 	rtable      RouteTable
 	dialTimeout time.Duration
-	climit      int
 	debug       bool
 	skipVerify  bool
 )
@@ -73,7 +72,6 @@ type Config struct {
 	TLSListen string `toml:"tls_listen"`
 	TLSPort   int    `toml:"tls_port"`
 	Timeout   int
-	Conlim    int
 	Log       string
 	Debug     bool
 	Route     []struct {
@@ -83,6 +81,7 @@ type Config struct {
 			Addr string
 			Port string
 			TLS  bool
+			Max  int
 		}
 	}
 }
@@ -105,6 +104,7 @@ type Server struct {
 	sync.RWMutex
 	Host  string
 	TLS   bool
+	Max   int
 	Count int
 }
 
@@ -149,7 +149,6 @@ func main() {
 
 	// Set some settings as global vars
 	dialTimeout = time.Duration(float64(config.Timeout)) * time.Second
-	climit = config.Conlim
 	debug = config.Debug
 	skipVerify = !config.TLSStrict
 
@@ -313,7 +312,7 @@ func (s *AgiSession) parseEnv() ([]byte, error) {
 	return agiEnv, err
 }
 
-// Route based on reguest path
+// Route based on request path
 func (s *AgiSession) route() error {
 	var err error
 	client := s.ClientCon.RemoteAddr()
@@ -353,7 +352,7 @@ func (s *AgiSession) route() error {
 	for i := 0; i < len(dest.Hosts); i++ {
 		server := dest.Hosts[i]
 		server.RLock()
-		if climit > 0 && server.Count >= climit {
+		if server.Max > 0 && server.Count >= server.Max {
 			server.RUnlock()
 			log.Printf("%v: Reached connections limit in %s\n", client, server.Host)
 			continue
@@ -445,6 +444,7 @@ func genRtable(conf Config) (map[string]*Destination, error) {
 			s := new(Server)
 			s.Host = server.Addr + ":" + server.Port
 			s.TLS = server.TLS
+			s.Max = server.Max
 			p.Hosts = append(p.Hosts, s)
 		}
 		table[route.Path] = p
