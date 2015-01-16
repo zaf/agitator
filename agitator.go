@@ -42,6 +42,7 @@ const (
 	agiEnvSize = 512
 	wildCard   = "*"
 	agiPort    = ":4573"
+	agiFail    = "FAILURE\n"
 )
 
 var (
@@ -53,15 +54,15 @@ var (
 	skipVerify  bool
 )
 
-// AgiSession struct
+// AgiSession holds the data of an active AGI session
 type AgiSession struct {
 	ClientCon net.Conn
 	ServerCon net.Conn
-	Request   *url.URL
-	Server    *Server
+	Request   *url.URL // Client Request
+	Server    *Server  // Destination server
 }
 
-// Config file struct
+// Config struct holds the various settings values after parsing the config file.
 type Config struct {
 	Listen    string
 	Port      int
@@ -99,7 +100,7 @@ type Destination struct {
 	Mode  string
 }
 
-// Server struct holds the server address, priority and the number of active sessions
+// Server struct holds the server address, TLS setting and the number of active sessions
 type Server struct {
 	sync.RWMutex
 	Host  string
@@ -243,12 +244,14 @@ func connHandle(conn net.Conn, wg *sync.WaitGroup) {
 	env, err := sess.parseEnv()
 	if err != nil {
 		log.Println(err)
+		sess.ClientCon.Write([]byte(agiFail))
 		return
 	}
 	// Do the routing
 	err = sess.route()
 	if err != nil {
 		log.Println(err)
+		sess.ClientCon.Write([]byte(agiFail))
 		return
 	}
 	defer sess.ServerCon.Close()
@@ -316,6 +319,9 @@ func (s *AgiSession) route() error {
 	client := s.ClientCon.RemoteAddr()
 	reqPath := strings.TrimPrefix(s.Request.Path, "/")
 
+	if debug {
+		log.Printf("%v: New request: %s\n", client, s.Request)
+	}
 	// Find route
 	rtable.RLock()
 	defer rtable.RUnlock()
@@ -330,9 +336,11 @@ func (s *AgiSession) route() error {
 		if !ok {
 			return fmt.Errorf("%v: No route found for %s", client, reqPath)
 		}
-	}
-	if debug {
-		log.Printf("%v: Found route\n", client)
+		if debug {
+			log.Printf("%v: Using wildcard route\n", client)
+		}
+	} else if debug {
+		log.Printf("%v: Using route: %s\n", client, reqPath)
 	}
 	// Load Balance mode: Sort servers by number of active sessions
 	if dest.Mode == "balance" {
@@ -440,6 +448,9 @@ func genRtable(conf Config) (map[string]*Destination, error) {
 			p.Hosts = append(p.Hosts, s)
 		}
 		table[route.Path] = p
+		if debug {
+			log.Printf("Added %s route\n", route.Path)
+		}
 	}
 	if len(table) == 0 {
 		err = fmt.Errorf("No routes specified")
