@@ -403,13 +403,13 @@ func sigHandle(schan <-chan os.Signal, s *int32, wg *sync.WaitGroup) {
 			_, err := toml.DecodeFile(*confFile, &config)
 			if err != nil {
 				log.Println("Failed to read config file:", err)
-				break
+				continue
 			}
 			// Generate routing table from config file data
 			table, err := genRtable(config)
 			if err != nil {
 				log.Println("No routes specified, using old config data.")
-				break
+				continue
 			}
 			rtable.Lock()
 			rtable.Route = table
