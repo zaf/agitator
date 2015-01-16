@@ -1,17 +1,26 @@
 #agitator
 
-A reverse proxy for the FastAGI protocol
-
-**Work in progress!**
+A reverse proxy for the [FastAGI](https://wiki.asterisk.org/wiki/display/AST/AGI+Commands) protocol
 
 *Features:*
 
 * Request based routing
+Routes FastAGI sessions depending on the request URI.
+
 * TLS support
+Offers strong encryption support for FastAGI sessions.
+
 * Load balancing
+Distributes load evenly between FastAGI servers based on the number of active sessions.
+
 * HA - Failover
+Can route traffic to stand-by servers when main server is not reachable, or has reached the number of maximum allowed sessions.
+
 * On the fly config reloading
+Routing rules can be reloaded/altered on the fly without restarting the proxy or dropping any connections.
+
 * Syslog integration
+Can send logging and debug data to a syslog server.
 
 To install:
 ```
@@ -21,6 +30,11 @@ To run:
 ```
 	agitator -conf=/path/to/conf.file
 ```
+
+There is also a simple Makefile that installs the agitator binary in /usr/local/bin and its config file in
+/usr/local/etc to help with system wide installation. Under the folder 'init' startup scripts are provided
+for systemd based systems or for Red Hat and Debian based systems that use the old sysV init.
+
 *Topology examples:*
 
 A typical layout where agitator sits between one or more asterisk servers and one or more
