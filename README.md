@@ -67,7 +67,8 @@ or by encrypting AGI traffic and directly communicating with TLS aware FastAGI s
 ![alt text](https://raw.githubusercontent.com/zaf/agitator/master/doc/example-2.png)
 
 An example of such a FastAGI server can be found [here](https://github.com/zaf/agi/blob/master/examples/fastagi-tls.go),
-using the [Go AGI package](https://github.com/zaf/agi).
+using the [Go AGI package](https://github.com/zaf/agi). A Perl implementation can be found [here](https://github.com/zaf/scripts/blob/master/fastagi-tls.pl)
+using Asterisk::AGI and Net::Server::PreFork.
 
 See sample [config file](https://github.com/zaf/agitator/blob/master/sample.conf) for configuration details.
 
