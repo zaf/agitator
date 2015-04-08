@@ -41,7 +41,7 @@ const (
 	agiEnvMax  = 150
 	agiEnvSize = 512
 	wildCard   = "*"
-	agiPort    = ":4573"
+	agiPort    = 4573
 	agiFail    = "FAILURE\n"
 )
 
@@ -64,13 +64,13 @@ type AgiSession struct {
 // Config struct holds the various settings values after parsing the config file.
 type Config struct {
 	Listen    string
-	Port      int
+	Port      uint16
 	TLS       bool
 	TLSStrict bool   `toml:"tls_strict"`
 	TLSCert   string `toml:"tls_cert"`
 	TLSKey    string `toml:"tls_key"`
 	TLSListen string `toml:"tls_listen"`
-	TLSPort   int    `toml:"tls_port"`
+	TLSPort   uint16 `toml:"tls_port"`
 	Timeout   int
 	Log       string
 	Debug     bool
@@ -79,7 +79,7 @@ type Config struct {
 		Mode string
 		Host []struct {
 			Addr string
-			Port string
+			Port uint16
 			TLS  bool
 			Max  int
 		}
@@ -170,7 +170,7 @@ func main() {
 	go sigHandle(sigChan, &shutdown, wg)
 
 	// Create a listener and start a new goroutine for each connection.
-	addr := config.Listen + ":" + strconv.Itoa(config.Port)
+	addr := config.Listen + ":" + strconv.Itoa(int(config.Port))
 	log.Printf("Starting AGItator proxy on %v\n", addr)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -200,7 +200,7 @@ func main() {
 			log.Fatal(err)
 		}
 		tlsConf := tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS10}
-		tlsSrv := config.TLSListen + ":" + strconv.Itoa(config.TLSPort)
+		tlsSrv := config.TLSListen + ":" + strconv.Itoa(int(config.TLSPort))
 		log.Printf("Listening for TLS connections on %v\n", tlsSrv)
 		tlsLn, err := tls.Listen("tcp", tlsSrv, &tlsConf)
 		if err != nil {
@@ -438,11 +438,11 @@ func genRtable(conf Config) (map[string]*Destination, error) {
 		}
 		p.Hosts = make([]*Server, 0, len(route.Host))
 		for _, server := range route.Host {
-			if server.Port == "" {
+			if server.Port < 1 {
 				server.Port = agiPort
 			}
 			s := new(Server)
-			s.Host = server.Addr + ":" + server.Port
+			s.Host = server.Addr + ":" + strconv.Itoa(int(server.Port))
 			s.TLS = server.TLS
 			s.Max = server.Max
 			p.Hosts = append(p.Hosts, s)
