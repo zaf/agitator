@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -74,6 +75,7 @@ type Config struct {
 	Timeout   int
 	Log       string
 	Debug     bool
+	Threads   int
 	Route     []struct {
 		Path string
 		Mode string
@@ -146,6 +148,8 @@ func main() {
 			log.SetOutput(logwriter)
 		}
 	}
+
+	runtime.GOMAXPROCS(config.Threads)
 
 	// Set some settings as global vars
 	dialTimeout = time.Duration(float64(config.Timeout)) * time.Second
