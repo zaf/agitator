@@ -42,7 +42,7 @@ There is also a simple Makefile that installs the agitator binary in `/usr/local
 `/usr/local/etc` to help with system wide installation. Under the folder [init](https://github.com/zaf/agitator/tree/master/init)
 startup scripts are provided for systemd based systems or for Red Hat and Debian based systems that use the old sysV init.
 
-Reloading the config file on-the-fly requires a Hangup signal to be sent to agigator process. This can be done either by using the
+Reloading the config file on-the-fly requires a Hangup signal to be sent to the agitator process. This can be done either by using the
 init scripts provided or with something like `pkill -HUP agitator`. This reloads the routing settings from the config file.
 To alter the general settings (like listening port or address) agitator must be restarted.
 A graceful shutdown option is available where agitator stops accepting new requests but waits
