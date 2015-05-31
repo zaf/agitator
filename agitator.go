@@ -49,6 +49,7 @@ const (
 var (
 	confFile    = flag.String("conf", "/usr/local/etc/agitator.conf", "Configuration file")
 	rtable      RouteTable
+	addFwdFor   bool
 	dialTimeout time.Duration
 	debug       bool
 	skipVerify  bool
@@ -58,6 +59,7 @@ var (
 type AgiSession struct {
 	ClientCon net.Conn
 	ServerCon net.Conn
+	FwdFor    string   // List of originating IPs
 	Request   *url.URL // Client Request
 	Server    *Server  // Destination server
 }
@@ -72,6 +74,7 @@ type Config struct {
 	TLSKey    string `toml:"tls_key"`
 	TLSListen string `toml:"tls_listen"`
 	TLSPort   uint16 `toml:"tls_port"`
+	FwdFor    bool   `toml:"fwd_for"`
 	Timeout   int
 	Log       string
 	Debug     bool
@@ -152,6 +155,7 @@ func main() {
 	runtime.GOMAXPROCS(config.Threads)
 
 	// Set some settings as global vars
+	addFwdFor = config.FwdFor
 	dialTimeout = time.Duration(float64(config.Timeout)) * time.Second
 	debug = config.Debug
 	skipVerify = !config.TLSStrict
@@ -261,6 +265,14 @@ func connHandle(conn net.Conn, wg *sync.WaitGroup) {
 	sess.Server.updateCount(1)
 
 	// Send the AGI env to the server.
+	if addFwdFor {
+		if sess.FwdFor == "" {
+			sess.FwdFor = sess.ClientCon.RemoteAddr().String()
+		} else {
+			sess.FwdFor += ", " + sess.ClientCon.RemoteAddr().String()
+		}
+		env = append(env, []byte("agi_x_fwd_for: "+sess.FwdFor+"\n")...)
+	}
 	env = append(env, []byte("agi_request: "+sess.Request.String()+"\n\r\n")...)
 	sess.ServerCon.Write(env)
 
@@ -304,6 +316,9 @@ func (s *AgiSession) parseEnv() ([]byte, error) {
 		if string(line[:ind]) == "agi_request" && len(line) >= ind+len(": \n") {
 			ind += len(": ")
 			req = string(line[ind : len(line)-1])
+		} else if addFwdFor && string(line[:ind]) == "agi_x_fwd_for" && len(line) >= ind+len(": \n") {
+			ind += len(": ")
+			s.FwdFor = string(line[ind : len(line)-1])
 		} else {
 			agiEnv = append(agiEnv, line...)
 		}
