@@ -39,7 +39,7 @@ import (
 const (
 	server     = iota
 	client     = iota
-	agiEnvMax  = 150
+	agiEnvMax  = 151
 	agiEnvSize = 512
 	wildCard   = "*"
 	agiPort    = 4573
@@ -305,7 +305,7 @@ func (s *AgiSession) parseEnv() ([]byte, error) {
 	agiEnv := make([]byte, 0, agiEnvSize)
 	buf := bufio.NewReader(s.ClientCon)
 
-	// Read the AGI enviroment, store all vars in agiEnv except 'agi_request'.
+	// Read the AGI environment, store all vars in agiEnv except 'agi_request'.
 	// Request is stored separately for parsing and further processing.
 	for i := 0; i <= agiEnvMax; i++ {
 		line, err := buf.ReadBytes(10)
