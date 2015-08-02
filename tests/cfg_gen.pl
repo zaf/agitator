@@ -18,7 +18,7 @@ my @chars = ("A".."Z", "a".."z", "/");
 
 my $general = "listen = \"0.0.0.0\"\nport = 4573\ntls_strict = true\ntls = true\ntls_listen = \"0.0.0.0\"\ntls_port = 4574\n"
 		. "tls_cert = \"tests/public.crt\"\ntls_key  = \"tests/secret.key\"\nfwd_for = false\ntimeout = 3\nlog = \"stdout\""
-		. "\ndebug = false\nthreads = 1\n";
+		. "\ndebug = false\nthreads = 0\n";
 my $host = "\n\t\[\[route.host\]\]\n\taddr = \"localhost\"\n\tport= 4545\n\ttls = false\n\tmax = 0\n";
 
 print $general;

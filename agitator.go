@@ -152,7 +152,9 @@ func main() {
 		}
 	}
 
-	runtime.GOMAXPROCS(config.Threads)
+	if config.Threads > 0 {
+		runtime.GOMAXPROCS(config.Threads)
+	}
 
 	// Set some settings as global vars
 	addFwdFor = config.FwdFor
