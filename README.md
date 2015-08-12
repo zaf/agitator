@@ -10,7 +10,7 @@ A reverse proxy for the [FastAGI](https://wiki.asterisk.org/wiki/display/AST/AGI
 
 - *Load balancing*
 
- Distributes load evenly between FastAGI servers based on the number of active sessions.
+ Distributes load evenly between FastAGI servers based on the number of active sessions or in a Round-Robin fashion.
 
 - *HA - Failover*
 

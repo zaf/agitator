@@ -32,7 +32,11 @@ if ($num_paths) {
 			$path .= $chars[rand @chars] for 0..9;
 		}
 		print "\n\[\[route\]\]\npath = \"$path\"\n";
-		print "mode = \"balance\"\n" if ($_ % 2 != 0);
+		if ($_ % 3 == 0) {
+			print "mode = \"balance\"\n";
+		} elsif ($_ % 2 == 0) {
+			print "mode = \"round-robin\"\n";
+		}
 		print $host x $num_hosts;
 	}
 }

@@ -363,12 +363,17 @@ func (s *AgiSession) route() error {
 		log.Printf("%v: Using route: %s\n", client, reqPath)
 	}
 	// Load Balance mode: Sort servers by number of active sessions
-	if dest.Mode == "balance" {
+	if dest.Mode == "balance" && len(dest.Hosts) > 1 {
 		dest.Lock()
 		sort.Sort(ByActive(dest.Hosts))
 		dest.Unlock()
 	}
-
+	// Round Robin mode: Cycle through the servers list
+	if dest.Mode == "round-robin" && len(dest.Hosts) > 1 {
+		dest.Lock()
+		dest.Hosts = append(dest.Hosts[1:], dest.Hosts[0])
+		dest.Unlock()
+	}
 	// Find available servers and connect
 	for i := 0; i < len(dest.Hosts); i++ {
 		server := dest.Hosts[i]
@@ -453,6 +458,8 @@ func genRtable(conf Config) (map[string]*Destination, error) {
 			p.Mode = "failover"
 		case "balance":
 			p.Mode = "balance"
+		case "round-robin":
+			p.Mode = "round-robin"
 		default:
 			log.Println("Invalid mode for", route.Path)
 			continue
