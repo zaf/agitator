@@ -68,12 +68,11 @@ type AgiSession struct {
 type Config struct {
 	Listen    string
 	Port      uint16
-	TLS       bool
+	TLSListen string `toml:"tls_listen"`
+	TLSPort   uint16 `toml:"tls_port"`
 	TLSStrict bool   `toml:"tls_strict"`
 	TLSCert   string `toml:"tls_cert"`
 	TLSKey    string `toml:"tls_key"`
-	TLSListen string `toml:"tls_listen"`
-	TLSPort   uint16 `toml:"tls_port"`
 	FwdFor    bool   `toml:"fwd_for"`
 	Timeout   int
 	Log       string
@@ -134,28 +133,25 @@ func (s ByActive) Less(i, j int) bool {
 }
 
 func main() {
-	log.SetFlags(0)
 	flag.Parse()
-
 	// Parse Config file
 	var config Config
 	_, err := toml.DecodeFile(*confFile, &config)
 	if err != nil {
 		log.Fatal(err)
 	}
-
+	runtime.GOMAXPROCS(config.Threads)
 	// Setup logging
 	if config.Log == "syslog" {
+		log.SetFlags(0)
 		logwriter, err := syslog.New(syslog.LOG_NOTICE, "agitator")
 		if err == nil {
 			log.SetOutput(logwriter)
 		}
 	}
-
-	if config.Threads > 0 {
-		runtime.GOMAXPROCS(config.Threads)
+	if config.Listen == "" && config.TLSListen == "" {
+		log.Fatal("No listening address specified.")
 	}
-
 	// Set some settings as global vars
 	addFwdFor = config.FwdFor
 	dialTimeout = time.Duration(float64(config.Timeout)) * time.Second
@@ -179,32 +175,34 @@ func main() {
 	wg.Add(1)
 	go sigHandle(sigChan, &shutdown, wg)
 
-	// Create a listener and start a new goroutine for each connection.
-	addr := config.Listen + ":" + strconv.Itoa(int(config.Port))
-	log.Printf("Starting AGItator proxy on %v\n", addr)
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer ln.Close()
-
-	go func() {
-		for atomic.LoadInt32(&shutdown) == 0 {
-			conn, err := ln.Accept()
-			if err != nil {
-				log.Println(err)
-				continue
-			}
-			if debug {
-				log.Printf("%v: Connected to %v\n", conn.RemoteAddr(), conn.LocalAddr())
-			}
-			wg.Add(1)
-			go connHandle(conn, wg)
+	if config.Listen != "" {
+		// Create a listener and start a new goroutine for each connection.
+		addr := config.Listen + ":" + strconv.Itoa(int(config.Port))
+		log.Printf("Starting AGItator proxy on %v\n", addr)
+		ln, err := net.Listen("tcp", addr)
+		if err != nil {
+			log.Fatal(err)
 		}
-	}()
+		defer ln.Close()
 
-	// Create a TLS listener
-	if config.TLS {
+		go func() {
+			for atomic.LoadInt32(&shutdown) == 0 {
+				conn, err := ln.Accept()
+				if err != nil {
+					log.Println(err)
+					continue
+				}
+				if debug {
+					log.Printf("%v: Connected to %v\n", conn.RemoteAddr(), conn.LocalAddr())
+				}
+				wg.Add(1)
+				go connHandle(conn, wg)
+			}
+		}()
+	}
+
+	if config.TLSListen != "" {
+		// Create a TLS listener
 		cert, err := tls.LoadX509KeyPair(config.TLSCert, config.TLSKey)
 		if err != nil {
 			log.Fatal(err)

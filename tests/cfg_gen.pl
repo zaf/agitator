@@ -16,10 +16,27 @@ my $num_paths = $ARGV[0];
 my $num_hosts = $ARGV[1];
 my @chars = ("A".."Z", "a".."z", "/");
 
-my $general = "listen = \"0.0.0.0\"\nport = 4573\ntls_strict = true\ntls = true\ntls_listen = \"0.0.0.0\"\ntls_port = 4574\n"
-		. "tls_cert = \"tests/public.crt\"\ntls_key  = \"tests/secret.key\"\nfwd_for = false\ntimeout = 3\nlog = \"stdout\""
-		. "\ndebug = false\nthreads = 0\n";
-my $host = "\n\t\[\[route.host\]\]\n\taddr = \"localhost\"\n\tport= 4545\n\ttls = false\n\tmax = 0\n";
+my $general =
+"listen = \"0.0.0.0\"
+port = 4573
+tls_listen = \"0.0.0.0\"
+tls_strict = true
+tls_port = 4574
+tls_cert = \"tests/public.crt\"
+tls_key  = \"tests/secret.key\"
+fwd_for = false
+timeout = 3
+log = \"stderr\"
+debug = false\nthreads = 0
+";
+
+my $host = "
+	\[\[route.host\]\]
+	addr = \"localhost\"
+	port= 4545
+	tls = false
+	max = 0
+";
 
 print $general;
 
