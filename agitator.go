@@ -494,7 +494,8 @@ func genRtable(conf Config) (map[string]*Destination, error) {
 
 // conCopy copies from src to dst until either EOF is reached on src or an error occurs.
 // Similar to io.Copy but also updates the src connection read timeout.
-func conCopy(dst net.Conn, src net.Conn, timeout time.Duration) (written int64, err error) {
+func conCopy(dst, src net.Conn, timeout time.Duration) error {
+	var err error
 	buf := make([]byte, 1024)
 	for {
 		if timeout.Seconds() > 0.0 {
@@ -503,9 +504,6 @@ func conCopy(dst net.Conn, src net.Conn, timeout time.Duration) (written int64, 
 		nr, readErr := src.Read(buf)
 		if nr > 0 {
 			nw, writeErr := dst.Write(buf[0:nr])
-			if nw > 0 {
-				written += int64(nw)
-			}
 			if writeErr != nil {
 				err = writeErr
 				break
@@ -522,5 +520,5 @@ func conCopy(dst net.Conn, src net.Conn, timeout time.Duration) (written int64, 
 			break
 		}
 	}
-	return written, err
+	return err
 }
