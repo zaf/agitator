@@ -25,7 +25,9 @@ tls_port = 4574
 tls_cert = \"tests/public.crt\"
 tls_key  = \"tests/secret.key\"
 fwd_for = false
-timeout = 3
+con_timeout = 3
+srv_timeout = 7200
+clt_timeout = 7200
 log = \"stderr\"
 debug = false\nthreads = 0
 ";

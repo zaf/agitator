@@ -16,7 +16,6 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"log/syslog"
 	"net"
@@ -51,6 +50,8 @@ var (
 	rtable      RouteTable
 	addFwdFor   bool
 	dialTimeout time.Duration
+	srvTimeout  time.Duration
+	cltTimeout  time.Duration
 	debug       bool
 	skipVerify  bool
 )
@@ -66,19 +67,21 @@ type AgiSession struct {
 
 // Config struct holds the various settings values after parsing the config file.
 type Config struct {
-	Listen    string
-	Port      uint16
-	TLSListen string `toml:"tls_listen"`
-	TLSPort   uint16 `toml:"tls_port"`
-	TLSStrict bool   `toml:"tls_strict"`
-	TLSCert   string `toml:"tls_cert"`
-	TLSKey    string `toml:"tls_key"`
-	FwdFor    bool   `toml:"fwd_for"`
-	Timeout   int
-	Log       string
-	Debug     bool
-	Threads   int
-	Route     []struct {
+	Listen     string
+	Port       uint16
+	TLSListen  string `toml:"tls_listen"`
+	TLSPort    uint16 `toml:"tls_port"`
+	TLSStrict  bool   `toml:"tls_strict"`
+	TLSCert    string `toml:"tls_cert"`
+	TLSKey     string `toml:"tls_key"`
+	FwdFor     bool   `toml:"fwd_for"`
+	ConTimeout int    `toml:"con_timeout"`
+	SrvTimeout int    `toml:"srv_timeout"`
+	CltTimeout int    `toml:"clt_timeout"`
+	Log        string
+	Debug      bool
+	Threads    int
+	Route      []struct {
 		Path string
 		Mode string
 		Host []struct {
@@ -154,7 +157,9 @@ func main() {
 	}
 	// Set some settings as global vars
 	addFwdFor = config.FwdFor
-	dialTimeout = time.Duration(float64(config.Timeout)) * time.Second
+	dialTimeout = time.Duration(float64(config.ConTimeout)) * time.Second
+	srvTimeout = time.Duration(float64(config.SrvTimeout)) * time.Second
+	cltTimeout = time.Duration(float64(config.CltTimeout)) * time.Second
 	debug = config.Debug
 	skipVerify = !config.TLSStrict
 
@@ -241,6 +246,9 @@ func main() {
 func connHandle(conn net.Conn, wg *sync.WaitGroup) {
 	sess := new(AgiSession)
 	sess.ClientCon = conn
+	if cltTimeout.Seconds() > 0.0 {
+		sess.ClientCon.SetReadDeadline(time.Now().Add(cltTimeout))
+	}
 	var err error
 	defer func() {
 		sess.ClientCon.Close()
@@ -279,11 +287,11 @@ func connHandle(conn net.Conn, wg *sync.WaitGroup) {
 	// Relay data between the 2 connections.
 	done := make(chan int)
 	go func() {
-		io.Copy(sess.ServerCon, sess.ClientCon)
+		conCopy(sess.ServerCon, sess.ClientCon, cltTimeout)
 		done <- client
 	}()
 	go func() {
-		io.Copy(sess.ClientCon, sess.ServerCon)
+		conCopy(sess.ClientCon, sess.ServerCon, srvTimeout)
 		done <- server
 	}()
 	fin := <-done
@@ -482,4 +490,37 @@ func genRtable(conf Config) (map[string]*Destination, error) {
 		err = fmt.Errorf("No routes specified")
 	}
 	return table, err
+}
+
+// conCopy copies from src to dst until either EOF is reached on src or an error occurs.
+// Similar to io.Copy but also updates the src connection read timeout.
+func conCopy(dst net.Conn, src net.Conn, timeout time.Duration) (written int64, err error) {
+	buf := make([]byte, 1024)
+	for {
+		if timeout.Seconds() > 0.0 {
+			src.SetReadDeadline(time.Now().Add(timeout))
+		}
+		nr, readErr := src.Read(buf)
+		if nr > 0 {
+			nw, writeErr := dst.Write(buf[0:nr])
+			if nw > 0 {
+				written += int64(nw)
+			}
+			if writeErr != nil {
+				err = writeErr
+				break
+			}
+			if nr != nw {
+				err = fmt.Errorf("Short write")
+				break
+			}
+		}
+		if readErr != nil {
+			if readErr.Error() != "EOF" {
+				err = readErr
+			}
+			break
+		}
+	}
+	return written, err
 }
