@@ -1,0 +1,38 @@
+#!/sbin/runscript
+#
+# Agitator FastAGI Reverse proxy
+#
+
+depend() {
+	need net
+	after firewall
+	use logger dns
+}
+
+start() {
+	ebegin "Starting Agitator"
+	start-stop-daemon --background --start --exec /usr/local/bin/agitator \
+	--make-pidfile --pidfile /run/agitator.pid
+	eend $?
+}
+
+stop() {
+	ebegin "Stopping Agitator"
+	start-stop-daemon --stop --exec /usr/local/bin/agitator \
+	--pidfile run/agitator.pid --remove-pidfile
+	eend $?
+}
+
+reload() {
+	ebegin "Reloading config for Agitator"
+	start-stop-daemon --stop --exec /usr/local/bin/agitator \
+	--pidfile run/agitator.pid --signal HUP
+	eend $?
+}
+
+stopgracefully() {
+	ebegin "Gracefully stopping Agitator"
+	start-stop-daemon --stop --exec /usr/local/bin/agitator \
+	--pidfile run/agitator.pid --remove-pidfile --signal INT
+	eend $?
+}
