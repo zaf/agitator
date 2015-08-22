@@ -16,6 +16,7 @@ clean:
 
 install: agitator
 	install agitator /usr/local/bin/
+	mkdir -p /usr/local/etc
 	install -b -m 644 sample.conf /usr/local/etc/agitator.conf
 
 install_deps:
