@@ -24,7 +24,7 @@ start() {
 
 stop() {
 	ebegin "Stopping Agitator"
-	start-stop-daemon --stop --exec /${command} \
+	start-stop-daemon --stop --exec ${command} \
 	--pidfile ${pidfile}
 	eend $?
 }
@@ -37,7 +37,7 @@ reload() {
 
 gracefulstop() {
 	ebegin "Gracefully stopping Agitator"
-	start-stop-daemon --stop --exec /${command} \
+	start-stop-daemon --stop --exec ${command} \
 	--pidfile ${pidfile} --retry INT/20/TERM/10/KILL/10
 	eend $?
 }
