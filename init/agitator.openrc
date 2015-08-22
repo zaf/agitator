@@ -3,6 +3,12 @@
 # Agitator FastAGI Reverse proxy
 #
 
+extra_commands="gracefulstop reload"
+
+command="/usr/local/bin/agitator"
+config="/usr/local/etc/agitator.conf"
+pidfile="/run/agitator.pid"
+
 depend() {
 	need net
 	after firewall
@@ -11,28 +17,27 @@ depend() {
 
 start() {
 	ebegin "Starting Agitator"
-	start-stop-daemon --background --start --exec /usr/local/bin/agitator \
-	--make-pidfile --pidfile /run/agitator.pid
+	start-stop-daemon --background --start --exec ${command} \
+	--make-pidfile --pidfile ${pidfile} -- -conf ${config}
 	eend $?
 }
 
 stop() {
 	ebegin "Stopping Agitator"
-	start-stop-daemon --stop --exec /usr/local/bin/agitator \
-	--pidfile run/agitator.pid --remove-pidfile
+	start-stop-daemon --stop --exec /${command} \
+	--pidfile ${pidfile}
 	eend $?
 }
 
 reload() {
 	ebegin "Reloading config for Agitator"
-	start-stop-daemon --stop --exec /usr/local/bin/agitator \
-	--pidfile run/agitator.pid --signal HUP
+	kill -HUP `cat ${pidfile}` &>/dev/null
 	eend $?
 }
 
-stopgracefully() {
+gracefulstop() {
 	ebegin "Gracefully stopping Agitator"
-	start-stop-daemon --stop --exec /usr/local/bin/agitator \
-	--pidfile run/agitator.pid --remove-pidfile --signal INT
+	start-stop-daemon --stop --exec /${command} \
+	--pidfile ${pidfile} --signal INT
 	eend $?
 }
