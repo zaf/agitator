@@ -40,7 +40,8 @@ To run:
 
 There is also a simple Makefile that installs the agitator binary in `/usr/local/bin` and its config file in
 `/usr/local/etc` to help with system wide installation. Under the folder [init](https://github.com/zaf/agitator/tree/master/init)
-startup scripts are provided for systemd based systems or for Red Hat and Debian based systems that use the old sysV init.
+startup scripts are provided for systemd based systems, for Red Hat and Debian based systems that use the old sysV init
+and for systems that use OpenRC.
 
 Reloading the config file on-the-fly requires a Hangup signal to be sent to the agitator process. This can be done either by using the
 init scripts provided or with something like `pkill -HUP agitator`. This reloads the routing settings from the config file.
