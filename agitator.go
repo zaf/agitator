@@ -321,6 +321,9 @@ func (s *AgiSession) parseEnv() ([]byte, error) {
 			break
 		}
 		ind := bytes.IndexByte(line, ':')
+		if ind == -1 {
+			break
+		}
 		if string(line[:ind]) == "agi_request" && len(line) >= ind+len(": \n") {
 			ind += len(": ")
 			req = string(line[ind : len(line)-1])
