@@ -282,7 +282,13 @@ func connHandle(conn net.Conn, wg *sync.WaitGroup) {
 		env = append(env, []byte("agi_x_fwd_for: "+sess.FwdFor+"\n")...)
 	}
 	env = append(env, []byte("agi_request: "+sess.Request.String()+"\n\r\n")...)
-	sess.ServerCon.Write(env)
+	_, err = sess.ServerCon.Write(env)
+	if err != nil {
+		log.Println(err)
+		sess.ClientCon.Write([]byte(agiFail))
+		sess.Server.updateCount(-1)
+		return
+	}
 
 	// Relay data between the 2 connections.
 	done := make(chan int)
@@ -310,13 +316,14 @@ func connHandle(conn net.Conn, wg *sync.WaitGroup) {
 func (s *AgiSession) parseEnv() ([]byte, error) {
 	var req string
 	var err error
+	var line []byte
 	agiEnv := make([]byte, 0, agiEnvSize)
 	buf := bufio.NewReader(s.ClientCon)
 
 	// Read the AGI environment, store all vars in agiEnv except 'agi_request'.
 	// Request is stored separately for parsing and further processing.
 	for i := 0; i <= agiEnvMax; i++ {
-		line, err := buf.ReadBytes(10)
+		line, err = buf.ReadBytes(10)
 		if err != nil || len(line) <= len("\r\n") {
 			break
 		}
