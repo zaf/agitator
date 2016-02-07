@@ -281,7 +281,7 @@ func connHandle(conn net.Conn, wg *sync.WaitGroup) {
 		}
 		env = append(env, []byte("agi_x_fwd_for: "+sess.FwdFor+"\n")...)
 	}
-	env = append(env, []byte("agi_request: "+sess.Request.String()+"\n\r\n")...)
+	env = append(env, []byte("agi_request: "+sess.Request.String()+"\n\n")...)
 	_, err = sess.ServerCon.Write(env)
 	if err != nil {
 		log.Println(err)
