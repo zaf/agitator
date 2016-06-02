@@ -9,10 +9,10 @@
 all: agitator
 
 agitator:
-	go build .
+	go build -ldflags="-s -w" .
 
 clean:
-	rm -f agitator
+	go clean
 
 install: agitator
 	install agitator /usr/local/bin/

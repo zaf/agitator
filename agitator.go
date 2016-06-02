@@ -43,10 +43,14 @@ const (
 	wildCard   = "*"
 	agiPort    = 4573
 	agiFail    = "FAILURE\n"
+	balance    = "balance"
+	failover   = "failover"
+	roundRobin = "round-robin"
 )
 
 var (
 	confFile    = flag.String("conf", "/usr/local/etc/agitator.conf", "Configuration file")
+	config      Config
 	rtable      RouteTable
 	addFwdFor   bool
 	dialTimeout time.Duration
@@ -135,10 +139,9 @@ func (s ByActive) Less(i, j int) bool {
 	return res
 }
 
-func main() {
+func init() {
 	flag.Parse()
 	// Parse Config file
-	var config Config
 	_, err := toml.DecodeFile(*confFile, &config)
 	if err != nil {
 		log.Fatal(err)
@@ -171,7 +174,9 @@ func main() {
 	rtable.Lock()
 	rtable.Route = table
 	rtable.Unlock()
+}
 
+func main() {
 	wg := new(sync.WaitGroup)
 	// Handle signals
 	var shutdown int32
@@ -189,21 +194,7 @@ func main() {
 			log.Fatal(err)
 		}
 		defer ln.Close()
-
-		go func() {
-			for atomic.LoadInt32(&shutdown) == 0 {
-				conn, err := ln.Accept()
-				if err != nil {
-					log.Println(err)
-					continue
-				}
-				if debug {
-					log.Printf("%v: Connected to %v\n", conn.RemoteAddr(), conn.LocalAddr())
-				}
-				wg.Add(1)
-				go connHandle(conn, wg)
-			}
-		}()
+		go serve(ln, wg, &shutdown)
 	}
 
 	if config.TLSListen != "" {
@@ -220,26 +211,28 @@ func main() {
 			log.Fatal(err)
 		}
 		defer tlsLn.Close()
-
-		go func() {
-			for atomic.LoadInt32(&shutdown) == 0 {
-				conn, err := tlsLn.Accept()
-				if err != nil {
-					log.Println(err)
-					continue
-				}
-				if debug {
-					log.Printf("%v: Connected to %v\n", conn.RemoteAddr(), conn.LocalAddr())
-				}
-				wg.Add(1)
-				go connHandle(conn, wg)
-			}
-		}()
+		go serve(tlsLn, wg, &shutdown)
 	}
 
 	config = Config{}
 	wg.Wait()
 	return
+}
+
+// Accept incoming connections
+func serve(ln net.Listener, wg *sync.WaitGroup, shutdown *int32) {
+	for atomic.LoadInt32(shutdown) == 0 {
+		conn, err := ln.Accept()
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+		if debug {
+			log.Printf("%v: Connected to %v\n", conn.RemoteAddr(), conn.LocalAddr())
+		}
+		wg.Add(1)
+		go connHandle(conn, wg)
+	}
 }
 
 // Connection handler. Find route, connect to remote server and relay data.
@@ -379,13 +372,13 @@ func (s *AgiSession) route() error {
 		log.Printf("%v: Using route: %s\n", client, reqPath)
 	}
 	// Load Balance mode: Sort servers by number of active sessions
-	if dest.Mode == "balance" && len(dest.Hosts) > 1 {
+	if dest.Mode == balance && len(dest.Hosts) > 1 {
 		dest.Lock()
 		sort.Sort(ByActive(dest.Hosts))
 		dest.Unlock()
 	}
 	// Round Robin mode: Cycle through the servers list
-	if dest.Mode == "round-robin" && len(dest.Hosts) > 1 {
+	if dest.Mode == roundRobin && len(dest.Hosts) > 1 {
 		dest.Lock()
 		dest.Hosts = append(dest.Hosts[1:], dest.Hosts[0])
 		dest.Unlock()
@@ -470,12 +463,12 @@ func genRtable(conf Config) (map[string]*Destination, error) {
 		}
 		p := new(Destination)
 		switch route.Mode {
-		case "", "failover":
-			p.Mode = "failover"
-		case "balance":
-			p.Mode = "balance"
-		case "round-robin":
-			p.Mode = "round-robin"
+		case "", failover:
+			p.Mode = failover
+		case balance:
+			p.Mode = balance
+		case roundRobin:
+			p.Mode = roundRobin
 		default:
 			log.Println("Invalid mode for", route.Path)
 			continue
