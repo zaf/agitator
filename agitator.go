@@ -433,14 +433,15 @@ func sigHandle(schan <-chan os.Signal, s *int32, wg *sync.WaitGroup) {
 			return
 		case syscall.SIGHUP:
 			log.Printf("Received %v, reloading routing rules from config file %s\n", signal, *confFile)
-			var config Config
-			_, err := toml.DecodeFile(*confFile, &config)
+			var conf Config
+			_, err := toml.DecodeFile(*confFile, &conf)
 			if err != nil {
 				log.Println("Failed to read config file:", err)
 				continue
 			}
 			// Generate routing table from config file data
-			table, err := genRtable(config)
+			table, err := genRtable(conf)
+			conf = Config{}
 			if err != nil {
 				log.Println("No routes specified, using old config data.")
 				continue
