@@ -8,7 +8,7 @@
 
 all: agitator
 
-agitator:
+agitator: agitator.go
 	go build -ldflags="-s -w" .
 
 clean:
@@ -19,5 +19,5 @@ install: agitator
 	mkdir -p /usr/local/etc
 	install -b -m 644 sample.conf /usr/local/etc/agitator.conf
 
-install_deps:
+install-deps:
 	go get -u github.com/BurntSushi/toml
