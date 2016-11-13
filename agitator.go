@@ -57,7 +57,7 @@ var (
 	srvTimeout  time.Duration
 	cltTimeout  time.Duration
 	debug       bool
-	skipVerify  bool
+	clientTLS   tls.Config
 )
 
 // AgiSession holds the data of an active AGI session
@@ -149,9 +149,9 @@ func init() {
 	runtime.GOMAXPROCS(config.Threads)
 	// Setup logging
 	if config.Log == "syslog" {
-		log.SetFlags(0)
-		logwriter, err := syslog.New(syslog.LOG_NOTICE, "agitator")
+		logwriter, err := syslog.New(syslog.LOG_NOTICE|syslog.LOG_USER, "agitator")
 		if err == nil {
+			log.SetFlags(0)
 			log.SetOutput(logwriter)
 		}
 	}
@@ -163,8 +163,8 @@ func init() {
 	dialTimeout = time.Duration(float64(config.ConTimeout)) * time.Second
 	srvTimeout = time.Duration(float64(config.SrvTimeout)) * time.Second
 	cltTimeout = time.Duration(float64(config.CltTimeout)) * time.Second
+	clientTLS = tls.Config{InsecureSkipVerify: !config.TLSStrict}
 	debug = config.Debug
-	skipVerify = !config.TLSStrict
 
 	// Generate routing table from config file data
 	table, err := genRtable(config)
@@ -203,7 +203,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		tlsConf := tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS10}
+		tlsConf := tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS11}
 		tlsSrv := config.TLSListen + ":" + strconv.Itoa(int(config.TLSPort))
 		log.Printf("Listening for TLS connections on %v\n", tlsSrv)
 		tlsLn, err := tls.Listen("tcp", tlsSrv, &tlsConf)
@@ -396,8 +396,7 @@ func (s *AgiSession) route() error {
 		dialer := new(net.Dialer)
 		dialer.Timeout = dialTimeout
 		if server.TLS {
-			tslConf := tls.Config{InsecureSkipVerify: skipVerify}
-			s.ServerCon, err = tls.DialWithDialer(dialer, "tcp", server.Host, &tslConf)
+			s.ServerCon, err = tls.DialWithDialer(dialer, "tcp", server.Host, &clientTLS)
 		} else {
 			s.ServerCon, err = dialer.Dial("tcp", server.Host)
 		}
