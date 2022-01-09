@@ -1,4 +1,4 @@
-#agitator
+# agitator
 
 A reverse proxy for the [FastAGI](https://wiki.asterisk.org/wiki/display/AST/AGI+Commands) protocol
 
@@ -31,7 +31,7 @@ A reverse proxy for the [FastAGI](https://wiki.asterisk.org/wiki/display/AST/AGI
 
 To install:
 ```
-	go get github.com/zaf/agitator
+	go install github.com/zaf/agitator
 ```
 To run:
 ```
